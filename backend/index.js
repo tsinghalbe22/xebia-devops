@@ -14,6 +14,7 @@ const addressRoutes=require('./routes/Address')
 const reviewRoutes=require("./routes/Review")
 const wishlistRoutes=require("./routes/Wishlist")
 const { connectToDB } = require("./database/db")
+const { metricsRouter, trackRequests } = require('./middleware/Metrics');
 
 
 // server init
@@ -40,8 +41,8 @@ server.use("/categories",categoryRoutes)
 server.use("/address",addressRoutes)
 server.use("/reviews",reviewRoutes)
 server.use("/wishlist",wishlistRoutes)
-
-
+server.use(trackRequests);
+server.use(metricsRouter);
 
 server.get("/",(req,res)=>{
     res.status(200).json({message:'running'})
