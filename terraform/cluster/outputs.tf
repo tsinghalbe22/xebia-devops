@@ -11,3 +11,8 @@ output "aks_client_id" {
   value     = azurerm_kubernetes_cluster.aks.kube_config.0.client_certificate
   sensitive = true
 }
+
+output "acr_name" {
+  value = azurerm_container_registry.acr.name
+  description = "The name of the Azure Container Registry"
+}
