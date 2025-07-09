@@ -118,6 +118,19 @@ pipeline {
                 script {
                     dir('/home/jenkins') {
                         // Capture outputs from Terraform
+                        sh """
+                        ACR_URL=\$(terraform output -raw acr_url)
+                ACR_NAME=\$(terraform output -raw acr_name)
+                AKS_API_SERVER=\$(terraform output -raw aks_api_server)
+                AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
+                RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
+
+                echo "ACR URL: \${ACR_URL}"
+                echo "ACR Name: \${ACR_NAME}"
+                echo "AKS API Server: \${AKS_API_SERVER}"
+                echo "AKS Cluster Name: \${AKS_CLUSTER_NAME}"
+                echo "Resource Group: \${RESOURCE_GROUP_NAME}"
+                """
                         env.ACR_URL = sh(script: "terraform output -raw acr_url", returnStdout: true).trim()
                         env.ACR_NAME = sh(script: "terraform output -raw acr_name", returnStdout: true).trim()
                         env.AKS_API_SERVER = sh(script: "terraform output -raw aks_api_server", returnStdout: true).trim()
