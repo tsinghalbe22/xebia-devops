@@ -1,3 +1,9 @@
+terraform {
+  backend "local" {
+    path = "/home/jenkins/terraform.tfstate"
+  }
+}
+
 # Provider configuration
 provider "azurerm" {
   features {}
