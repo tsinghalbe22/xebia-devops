@@ -6,12 +6,13 @@ pipeline {
         CLIENT_SECRET = credentials('azure-client-secret')
         TENANT_ID = credentials('azure-tenant-id')
         SUBSCRIPTION_ID = credentials('azure-subscription-id')
-        ACR_URL = "dockeracrxyz.azurecr.io"  // This will be set later
+        ACR_URL = "dockeracrxyz.azurecr.io"
         AKS_API_SERVER = ""
         RESOURCE_GROUP_NAME = "docker-vm-rg-terraform"
         ACR_NAME = "dockeracrxyz"
         AKS_CLUSTER_NAME = "docker-aks-cluster"
         KUBECONFIG = "/home/jenkins/.kube/config"
+        STATIC_IP_NAME = "frontend-static-ip"
     }
 
     parameters {
@@ -49,8 +50,6 @@ pipeline {
                 }
             }
         }
-
-        
 
         stage('Docker Build and Push') {
             when {
@@ -95,8 +94,85 @@ pipeline {
                         --resource-group ${env.RESOURCE_GROUP_NAME} \
                         --name ${env.AKS_CLUSTER_NAME} \
                         --overwrite-existing
+                    """
+                }
+            }
+        }
 
-                        az aks update -n ${env.AKS_CLUSTER_NAME} -g ${env.RESOURCE_GROUP_NAME} --attach-acr ${env.ACR_NAME}
+        stage('Setup Static IP') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Setting up static IP for frontend"
+                    sh """
+                    # Get the node resource group
+                    NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
+                    
+                    # Create static public IP if it doesn't exist
+                    if ! az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} > /dev/null 2>&1; then
+                        echo "Creating static IP..."
+                        az network public-ip create \
+                            --resource-group \$NODE_RG \
+                            --name ${env.STATIC_IP_NAME} \
+                            --sku Standard \
+                            --allocation-method static
+                    else
+                        echo "Static IP already exists"
+                    fi
+                    
+                    # Get the static IP address
+                    STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} --query "ipAddress" -o tsv)
+                    echo "Static IP: \$STATIC_IP"
+                    
+                    # Store the IP for later use
+                    echo \$STATIC_IP > static_ip.txt
+                    """
+                }
+            }
+        }
+
+        stage('Setup ACR Authentication') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Setting up ACR authentication"
+                    sh """
+                    # Enable ACR admin user
+                    az acr update --name ${env.ACR_NAME} --admin-enabled true
+                    
+                    # Get ACR credentials
+                    ACR_PASSWORD=\$(az acr credential show --name ${env.ACR_NAME} --query "passwords[0].value" -o tsv)
+                    
+                    # Create or update Kubernetes secret
+                    kubectl create secret docker-registry acr-secret \
+                        --docker-server=${env.ACR_URL} \
+                        --docker-username=${env.ACR_NAME} \
+                        --docker-password=\$ACR_PASSWORD \
+                        --dry-run=client -o yaml | kubectl apply -f -
+                    """
+                }
+            }
+        }
+
+        stage('Create Backend Secret') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Creating backend secret"
+                    sh """
+                    # Create backend secret with default values
+                    kubectl create secret generic backend-secret \
+                        --from-literal=DATABASE_URL="postgresql://user:pass@localhost:5432/mydb" \
+                        --from-literal=SECRET_KEY="your-secret-key-here" \
+                        --from-literal=DEBUG="false" \
+                        --from-literal=ALLOWED_HOSTS="*" \
+                        --dry-run=client -o yaml | kubectl apply -f -
                     """
                 }
             }
@@ -107,23 +183,34 @@ pipeline {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
-                 script {
-            echo "Updating Kubernetes Manifests"
-            
-            // List contents of k8s to debug
-            sh 'ls -R k8s/'
+                script {
+                    echo "Updating Kubernetes Manifests"
+                    
+                    // List contents of k8s to debug
+                    sh 'ls -R k8s/'
+                    
+                    // Get static IP for service update
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    // Replace image tags in Kubernetes manifests
+                    sh """
+                    echo 'Updating frontend deployment.yaml'
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
 
-            // Replace image tags in Kubernetes manifests
-            sh """
-            echo 'Updating frontend deployment.yaml'
-            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
-            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
-
-            echo 'Updating backend deployment.yaml'
-            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
-            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
-            """
-        }
+                    echo 'Updating backend deployment.yaml'
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
+                    
+                    # Update frontend service to use LoadBalancer with static IP
+                    sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/frontend/service.yaml
+                    sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${staticIP}' k8s/frontend/service.yaml
+                    
+                    # Add image pull secrets to deployments
+                    sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
+                    sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
+                    """
+                }
             }
         }
 
@@ -135,11 +222,11 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes"
                     sh """
-            kubectl apply -f k8s/frontend/deployment.yaml
-            kubectl apply -f k8s/backend/deployment.yaml
-            kubectl apply -f k8s/frontend/service.yaml
-            kubectl apply -f k8s/backend/service.yaml
-            """
+                    kubectl apply -f k8s/frontend/deployment.yaml
+                    kubectl apply -f k8s/backend/deployment.yaml
+                    kubectl apply -f k8s/frontend/service.yaml
+                    kubectl apply -f k8s/backend/service.yaml
+                    """
                 }
             }
         }
@@ -152,9 +239,27 @@ pipeline {
                 script {
                     echo "Verifying deployment"
                     sh """
+                    echo "Waiting for deployments to be ready..."
+                    kubectl rollout status deployment/frontend --timeout=300s
+                    kubectl rollout status deployment/backend --timeout=300s
+                    
+                    echo "Pod status:"
                     kubectl get pods -l app=frontend
                     kubectl get pods -l app=backend
+                    
+                    echo "Service status:"
                     kubectl get services
+                    
+                    echo "Getting frontend external IP..."
+                    kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+                    echo ""
+                    
+                    FRONTEND_IP=\$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                    if [ ! -z "\$FRONTEND_IP" ]; then
+                        echo "Frontend accessible at: http://\$FRONTEND_IP:3000"
+                    else
+                        echo "Frontend IP still pending, check with: kubectl get services -w"
+                    fi
                     """
                 }
             }
@@ -187,8 +292,7 @@ pipeline {
     post {
         always {
             script {
-                sh "echo Test"
-
+                sh "echo Pipeline completed"
             }
         }
         success {
@@ -198,6 +302,15 @@ pipeline {
                     echo "Deployment completed successfully!"
                     echo "ACR URL: ${env.ACR_URL}"
                     echo "AKS Cluster: ${env.AKS_CLUSTER_NAME}"
+                    
+                    // Show access information
+                    sh """
+                    echo "=== ACCESS INFORMATION ==="
+                    FRONTEND_IP=\$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
+                    echo "Frontend URL: http://\$FRONTEND_IP:3000"
+                    echo "Backend URL: http://\$FRONTEND_IP:8000 (if exposed)"
+                    echo "==========================="
+                    """
                 }
             }
         }
@@ -206,9 +319,24 @@ pipeline {
             script {
                 // Get recent logs for debugging
                 sh """
-                kubectl get events --sort-by=.metadata.creationTimestamp || true
+                echo "=== DEBUGGING INFORMATION ==="
+                kubectl get events --sort-by=.metadata.creationTimestamp --tail=20 || true
+                echo ""
+                echo "Frontend pods:"
+                kubectl get pods -l app=frontend || true
+                echo ""
+                echo "Backend pods:"
+                kubectl get pods -l app=backend || true
+                echo ""
+                echo "Services:"
+                kubectl get services || true
+                echo ""
+                echo "Frontend logs:"
                 kubectl logs --tail=50 -l app=frontend || true
+                echo ""
+                echo "Backend logs:"
                 kubectl logs --tail=50 -l app=backend || true
+                echo "=============================="
                 """
             }
         }
