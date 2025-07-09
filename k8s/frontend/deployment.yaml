@@ -20,4 +20,8 @@ spec:
             - containerPort: 3000
           env:
             - name: REACT_APP_BASE_URL
-              value: "http://$(hostname -i):30080"
+              value: "http://$(POD_IP):30080"  # Kubernetes will resolve POD_IP dynamically
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP  # The fieldPath points to the pod's IP address
