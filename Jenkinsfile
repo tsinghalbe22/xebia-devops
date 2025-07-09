@@ -98,14 +98,12 @@ pipeline {
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
 
-                        # Capture outputs from Terraform
                         export ACR_URL=\$(terraform output raw acr_url)
                         export ACR_NAME=\$(terraform output -raw acr_name)
                         export AKS_API_SERVER=\$(terraform output -raw aks_api_server)
                         export AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
                         export RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
 
-                        # Output for debugging
                         echo "ACR URL: \${ACR_URL}"
                         echo "ACR Name: \${ACR_NAME}"
                         echo "AKS API Server: \${AKS_API_SERVER}"
@@ -125,18 +123,15 @@ pipeline {
                 script {
                     sh """
                     cd /home/jenkins
-                    # Login to ACR
                     echo "Logging in to Azure Container Registry"
                     az acr login --name ${env.ACR_NAME}
 
-                    # Build and push frontend
                     echo "Building and pushing Frontend Docker Image"
                     docker build -t ${env.ACR_URL}/frontend:${BUILD_NUMBER} frontend/
                     docker build -t ${env.ACR_URL}/frontend:latest frontend/
                     docker push ${env.ACR_URL}/frontend:${BUILD_NUMBER}
                     docker push ${env.ACR_URL}/frontend:latest
                     
-                    # Build and push backend
                     echo "Building and pushing Backend Docker Image"
                     docker build -t ${env.ACR_URL}/backend:${BUILD_NUMBER} backend/
                     docker build -t ${env.ACR_URL}/backend:latest backend/
@@ -173,7 +168,6 @@ pipeline {
                 script {
                     sh """
                     cd /home/jenkins
-                    # Replace image tags in Kubernetes manifests
                     sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend-deployment.yaml
                     sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend-deployment.yaml
                     sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
