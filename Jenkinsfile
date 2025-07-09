@@ -100,38 +100,59 @@ pipeline {
         }
 
         stage('Setup Static IP') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Setting up static IP for frontend"
-                    sh """
-                    # Get the node resource group
-                    NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
+    when {
+        expression { params.ACTION == 'deploy' }
+    }
+    steps {
+        script {
+            echo "Setting up static IP for frontend"
+            sh """
+            # Get the node resource group
+            NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
+            echo "Node Resource Group: \$NODE_RG"
+            
+            # Check if static public IP exists
+            if az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} > /dev/null 2>&1; then
+                echo "Static IP '${env.STATIC_IP_NAME}' already exists - using existing IP"
+                STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} --query "ipAddress" -o tsv)
+                echo "Using existing static IP: \$STATIC_IP"
+            else
+                echo "Static IP '${env.STATIC_IP_NAME}' does not exist - checking quota before creating"
+                
+                # Check current public IP count in the region
+                CURRENT_COUNT=\$(az network public-ip list --query "length([?location=='centralindia'])" -o tsv)
+                echo "Current public IP count in Central India: \$CURRENT_COUNT"
+                
+                if [ \$CURRENT_COUNT -ge 3 ]; then
+                    echo "ERROR: Cannot create new public IP - quota limit reached (\$CURRENT_COUNT/3)"
+                    echo "Available public IPs in Central India:"
+                    az network public-ip list --query "[?location=='centralindia'].{Name:name, ResourceGroup:resourceGroup, IP:ipAddress, Associated:ipConfiguration.id}" --output table
+                    echo ""
+                    echo "Please either:"
+                    echo "1. Delete an unused public IP, or"
+                    echo "2. Request quota increase, or" 
+                    echo "3. Use NodePort instead of LoadBalancer"
+                    exit 1
+                else
+                    echo "Creating new static IP... (Current: \$CURRENT_COUNT/3)"
+                    az network public-ip create \
+                        --resource-group \$NODE_RG \
+                        --name ${env.STATIC_IP_NAME} \
+                        --sku Standard \
+                        --allocation-method static
                     
-                    # Create static public IP if it doesn't exist
-                    if ! az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} > /dev/null 2>&1; then
-                        echo "Creating static IP..."
-                        az network public-ip create \
-                            --resource-group \$NODE_RG \
-                            --name ${env.STATIC_IP_NAME} \
-                            --sku Standard \
-                            --allocation-method static
-                    else
-                        echo "Static IP already exists"
-                    fi
-                    
-                    # Get the static IP address
                     STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} --query "ipAddress" -o tsv)
-                    echo "Static IP: \$STATIC_IP"
-                    
-                    # Store the IP for later use
-                    echo \$STATIC_IP > static_ip.txt
-                    """
-                }
-            }
+                    echo "Created new static IP: \$STATIC_IP"
+                fi
+            fi
+            
+            # Store the IP for later use
+            echo \$STATIC_IP > static_ip.txt
+            echo "Static IP stored in static_ip.txt: \$STATIC_IP"
+            """
         }
+    }
+}
 
         stage('Setup ACR Authentication') {
             when {
