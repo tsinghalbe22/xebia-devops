@@ -154,7 +154,7 @@ pipeline {
             }
         }
 
-        stage('Update Kubernetes Manifests') {
+stage('Update Kubernetes Manifests') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
@@ -165,8 +165,8 @@ pipeline {
                     // List contents of k8s to debug
                     sh 'ls -R k8s/'
                     
-                    // Get static IP for service update
-                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    // Get static IP for frontend service
+                    def frontendIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
                     
                     // Replace image tags in Kubernetes manifests
                     sh """
@@ -178,11 +178,14 @@ pipeline {
                     sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
                     sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
                     
-                    # Update frontend service to use LoadBalancer with static IP
+                    # Convert both services to LoadBalancer
                     sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/frontend/service.yaml
-                    sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${staticIP}' k8s/frontend/service.yaml
+                    sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/backend/service.yaml
                     
-                    # Add image pull secrets after containers line
+                    # Add static IP to frontend service
+                    sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${frontendIP}' k8s/frontend/service.yaml
+                    
+                    # Add image pull secrets to deployments
                     sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
                     sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
                     """
@@ -190,18 +193,113 @@ pipeline {
             }
         }
 
-        stage('Kubernetes Deployment') {
+        stage('Deploy Backend Service First') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
                 script {
-                    echo "Deploying to Kubernetes"
+                    echo "Deploying backend service and deployment"
+                    sh """
+                    kubectl apply -f k8s/backend/deployment.yaml
+                    kubectl apply -f k8s/backend/service.yaml
+                    """
+                    
+                    // Wait for backend LoadBalancer to get IP
+                    echo "Waiting for backend LoadBalancer IP..."
+                    sh """
+                    kubectl wait --for=condition=Ready pod -l app=backend --timeout=300s
+                    """
+                    
+                    // Get backend IP (retry loop)
+                    def backendIP = ""
+                    for (int i = 0; i < 30; i++) {
+                        try {
+                            backendIP = sh(script: 'kubectl get service backend -o jsonpath="{.status.loadBalancer.ingress[0].ip}"', returnStdout: true).trim()
+                            if (backendIP && backendIP != "") {
+                                echo "Backend LoadBalancer IP: ${backendIP}"
+                                break
+                            }
+                        } catch (Exception e) {
+                            echo "Waiting for backend IP... attempt ${i+1}/30"
+                        }
+                        sleep(10)
+                    }
+                    
+                    if (!backendIP || backendIP == "") {
+                        error "Failed to get backend LoadBalancer IP after 5 minutes"
+                    }
+                    
+                    // Store backend IP for next stage
+                    sh "echo '${backendIP}' > backend_ip.txt"
+                }
+            }
+        }
+
+        stage('Update Frontend with Backend IP') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Updating frontend with backend IP"
+                    
+                    def backendIP = sh(script: 'cat backend_ip.txt', returnStdout: true).trim()
+                    
+                    // Update frontend deployment with backend IP
+                    sh """
+                    # Remove any existing REACT_APP_BASE_URL if present
+                    sed -i '/REACT_APP_BASE_URL/d' k8s/frontend/deployment.yaml
+                    
+                    # Add backend URL environment variable
+                    sed -i '/ports:/a\\          env:\\n          - name: REACT_APP_BASE_URL\\n            value: "http://${backendIP}:8000"' k8s/frontend/deployment.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Frontend Service') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Deploying frontend service and deployment"
                     sh """
                     kubectl apply -f k8s/frontend/deployment.yaml
-                    kubectl apply -f k8s/backend/deployment.yaml
                     kubectl apply -f k8s/frontend/service.yaml
-                    kubectl apply -f k8s/backend/service.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Update Backend CORS') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Updating backend CORS with frontend IP"
+                    
+                    def frontendIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    // Update backend secret with correct CORS origin
+                    sh """
+                    kubectl create secret generic backend-secret \
+                        --from-literal=MONGO_URI="mongodb+srv://tsinghalbe22:BDUosPJHgGlYDoD2@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" \
+                        --from-literal=ORIGIN="http://${frontendIP}:3000" \
+                        --from-literal=EMAIL="your-email@example.com" \
+                        --from-literal=PASSWORD="your-email-password" \
+                        --from-literal=LOGIN_TOKEN_EXPIRATION="30d" \
+                        --from-literal=OTP_EXPIRATION_TIME="120000" \
+                        --from-literal=PASSWORD_RESET_TOKEN_EXPIRATION="2m" \
+                        --from-literal=COOKIE_EXPIRATION_DAYS="30" \
+                        --from-literal=SECRET_KEY="e5ee2b6c6bd78cda55c4af8e678b08b6983e324411d90ffe04387fb716f59f4e" \
+                        --from-literal=PRODUCTION="false" \
+                        --dry-run=client -o yaml | kubectl apply -f -
+                    
+                    # Restart backend deployment to pick up new secret
+                    kubectl rollout restart deployment/backend
                     """
                 }
             }
@@ -215,27 +313,16 @@ pipeline {
                 script {
                     echo "Verifying deployment"
                     sh """
-                    echo "Waiting for deployments to be ready..."
-                    kubectl rollout status deployment/frontend --timeout=300s
-                    kubectl rollout status deployment/backend --timeout=300s
-                    
-                    echo "Pod status:"
                     kubectl get pods -l app=frontend
                     kubectl get pods -l app=backend
-                    
-                    echo "Service status:"
                     kubectl get services
                     
-                    echo "Getting frontend external IP..."
-                    kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-                    echo ""
+                    echo "Frontend IP: \$(cat static_ip.txt)"
+                    echo "Backend IP: \$(cat backend_ip.txt)"
                     
-                    FRONTEND_IP=\$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                    if [ ! -z "\$FRONTEND_IP" ]; then
-                        echo "Frontend accessible at: http://\$FRONTEND_IP:3000"
-                    else
-                        echo "Frontend IP still pending, check with: kubectl get services -w"
-                    fi
+                    echo "URLs:"
+                    echo "Frontend: http://\$(cat static_ip.txt):3000"
+                    echo "Backend: http://\$(cat backend_ip.txt):8000"
                     """
                 }
             }
