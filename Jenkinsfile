@@ -184,8 +184,6 @@ pipeline {
             kubectl apply -f k8s/backend/deployment.yaml
             kubectl apply -f k8s/frontend/service.yaml
             kubectl apply -f k8s/backend/service.yaml
-            kubectl rollout status deployment/frontend-deployment
-            kubectl rollout status deployment/backend-deployment
             """
                 }
             }
@@ -235,9 +233,7 @@ pipeline {
         always {
             script {
                 // Clean up Docker images
-                sh """
-                docker system prune -af --volumes || true
-                """
+
             }
         }
         success {
