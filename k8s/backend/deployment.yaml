@@ -14,8 +14,8 @@ spec:
     spec:
       containers:
         - name: backend
-          image: docker.io/tsinghalbe22/backend:latest
-          imagePullPolicy: Never
+          image: "${ACR_URL}/backend:latest"
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:

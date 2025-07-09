@@ -14,10 +14,10 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: docker.io/tsinghalbe22/frontend:latest
-          imagePullPolicy: Never
+          image: "${ACR_URL}/frontend:latest"
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
-          envFrom:
-            - configMapRef:
-                name: frontend-config
+          env:
+            - name: REACT_APP_BASE_URL
+              value: "http://$(hostname -i):30080"
