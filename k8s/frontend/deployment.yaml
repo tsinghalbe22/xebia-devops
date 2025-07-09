@@ -13,15 +13,15 @@ spec:
         app: frontend
     spec:
       containers:
-      - name: frontend
-        image: "{{ACR_URL}}/frontend:latest"
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 3000
-        env:
-        - name: REACT_APP_BASE_URL
-          value: "http://$(POD_IP):30080"
-        - name: POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
+        - name: frontend
+          image: "{{ACR_URL}}/frontend:latest"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: REACT_APP_BASE_URL
+              value: http://$(POD_IP):30080
