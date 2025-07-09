@@ -51,6 +51,245 @@ pipeline {
             }
         }
 
+        stage('Terraform Init') {
+
+
+            steps {
+
+
+                script {
+
+
+                    dir('terraform/cluster') {
+
+
+                        sh 'terraform init -backend-config="path=/home/jenkins/terraform.tfstate"'
+
+
+                    }
+
+
+                }
+
+
+            }
+
+
+        }
+
+
+
+
+
+        stage('Terraform Plan') {
+
+
+            when {
+
+
+                expression { params.ACTION == 'deploy' }
+
+
+            }
+
+
+            steps {
+
+
+                script {
+
+
+                    dir('terraform/cluster') {
+
+
+                        sh '''
+
+
+                        terraform plan \
+
+
+                            -var="client_id=${CLIENT_ID}" \
+
+
+                            -var="client_secret=${CLIENT_SECRET}" \
+
+
+                            -var="tenant_id=${TENANT_ID}" \
+
+
+                            -var="subscription_id=${SUBSCRIPTION_ID}" \
+
+
+                            -out=tfplan
+
+
+                        '''
+
+
+                    }
+
+
+                }
+
+
+            }
+
+
+        }
+
+
+
+
+
+        stage('Terraform Apply') {
+
+
+            when {
+
+
+                expression { params.ACTION == 'deploy' }
+
+
+            }
+
+
+            steps {
+
+
+                script {
+
+
+                    dir('terraform/cluster') {
+
+
+                        sh '''
+
+
+                        terraform apply -auto-approve \
+
+
+                            -var="client_id=${CLIENT_ID}" \
+
+
+                            -var="client_secret=${CLIENT_SECRET}" \
+
+
+                            -var="tenant_id=${TENANT_ID}" \
+
+
+                            -var="subscription_id=${SUBSCRIPTION_ID}"
+
+
+                        '''
+
+
+                    }
+
+
+                }
+
+
+            }
+
+
+        }
+
+
+
+
+
+
+
+
+        stage('Docker Build and Push') {
+
+
+            when {
+
+
+                expression { params.ACTION == 'deploy' }
+
+
+            }
+
+
+            steps {
+
+
+                script {
+
+
+                    // Login to ACR
+
+
+                    echo "Logging in to Azure Container Registry"
+
+
+                    sh "az acr login --name ${env.ACR_NAME}"
+
+
+
+
+
+                    // Build and push frontend
+
+
+                    echo "Building and pushing Frontend Docker Image"
+
+
+                    sh """
+
+
+                    docker build -t ${env.ACR_URL}/frontend:${BUILD_NUMBER} frontend/
+
+
+                    docker build -t ${env.ACR_URL}/frontend:latest frontend/
+
+
+                    docker push ${env.ACR_URL}/frontend:${BUILD_NUMBER}
+
+
+                    docker push ${env.ACR_URL}/frontend:latest
+
+
+                    """
+
+
+                    
+
+
+                    // Build and push backend
+
+
+                    echo "Building and pushing Backend Docker Image"
+
+
+                    sh """
+
+
+                    docker build -t ${env.ACR_URL}/backend:${BUILD_NUMBER} backend/
+
+
+                    docker build -t ${env.ACR_URL}/backend:latest backend/
+
+
+                    docker push ${env.ACR_URL}/backend:${BUILD_NUMBER}
+
+
+                    docker push ${env.ACR_URL}/backend:latest
+
+
+                    """
+
+
+                }
+
+
+            }
+
+
+        }
+
         stage('Get AKS Credentials') {
             when {
                 expression { params.ACTION == 'deploy' }
