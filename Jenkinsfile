@@ -214,23 +214,24 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Creating backend secret"
-                    sh """
-            # Create backend secret with dynamic origin
-            kubectl create secret generic backend-secret \
-                --from-literal=MONGO_URI="mongodb+srv://tsinghalbe22:BDUosPJHgGlYDoD2@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" \
-                --from-literal=ORIGIN="http://test:3000" \
-                --from-literal=EMAIL="your-email@example.com" \
-                --from-literal=PASSWORD="your-email-password" \
-                --from-literal=LOGIN_TOKEN_EXPIRATION="30d" \
-                --from-literal=OTP_EXPIRATION_TIME="120000" \
-                --from-literal=PASSWORD_RESET_TOKEN_EXPIRATION="2m" \
-                --from-literal=COOKIE_EXPIRATION_DAYS="30" \
-                --from-literal=SECRET_KEY="e5ee2b6c6bd78cda55c4af8e678b08b6983e324411d90ffe04387fb716f59f4e" \
-                --from-literal=PRODUCTION="false" \
-                --dry-run=client -o yaml | kubectl apply -f -
-            """
-                }
+    echo "Creating backend secret"
+    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+    
+    sh """
+    kubectl create secret generic backend-secret \
+        --from-literal=MONGO_URI="mongodb+srv://tsinghalbe22:BDUosPJHgGlYDoD2@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" \
+        --from-literal=ORIGIN="http://${staticIP}:3000" \
+        --from-literal=EMAIL="your-email@example.com" \
+        --from-literal=PASSWORD="your-email-password" \
+        --from-literal=LOGIN_TOKEN_EXPIRATION="30d" \
+        --from-literal=OTP_EXPIRATION_TIME="120000" \
+        --from-literal=PASSWORD_RESET_TOKEN_EXPIRATION="2m" \
+        --from-literal=COOKIE_EXPIRATION_DAYS="30" \
+        --from-literal=SECRET_KEY="e5ee2b6c6bd78cda55c4af8e678b08b6983e324411d90ffe04387fb716f59f4e" \
+        --from-literal=PRODUCTION="false" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    """
+}
             }
         }
 
