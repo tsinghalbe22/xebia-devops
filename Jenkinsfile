@@ -444,7 +444,7 @@ stage('Initial Kubernetes Manifests Update') {
             
             # Add static IP to frontend service
             sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${frontendIP}' k8s/frontend/service.yaml
-            sed -i '/type: LoadBalancer/a\  loadBalancerIP: ${backendStaticIP}' k8s/backend/service.yaml
+            sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${backendStaticIP}' k8s/backend/service.yaml
             
             # Add image pull secrets to deployments
             sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
