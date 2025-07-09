@@ -6,7 +6,7 @@ pipeline {
         CLIENT_SECRET = credentials('azure-client-secret')
         TENANT_ID = credentials('azure-tenant-id')
         SUBSCRIPTION_ID = credentials('azure-subscription-id')
-        ACR_URL = ""  // This will be set later
+        ACR_URL = ""  
         AKS_API_SERVER = ""
         RESOURCE_GROUP_NAME = ""
         ACR_NAME = ""
@@ -15,16 +15,8 @@ pipeline {
     }
 
     parameters {
-        choice(
-            name: 'ACTION',
-            choices: ['deploy', 'destroy'],
-            description: 'Select action to perform'
-        )
-        booleanParam(
-            name: 'SKIP_TERRAFORM_DESTROY',
-            defaultValue: true,
-            description: 'Skip Terraform destroy step'
-        )
+        choice(name: 'ACTION', choices: ['deploy', 'destroy'], description: 'Select action to perform')
+        booleanParam(name: 'SKIP_TERRAFORM_DESTROY', defaultValue: true, description: 'Skip Terraform destroy step')
     }
 
     stages {
@@ -38,12 +30,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     az login --service-principal \
                         --username ${CLIENT_ID} \
                         --password ${CLIENT_SECRET} \
                         --tenant ${TENANT_ID}
-                    
                     az account set --subscription ${SUBSCRIPTION_ID}
                     """
                 }
@@ -66,17 +56,14 @@ pipeline {
             }
             steps {
                 script {
-                     dir('terraform/cluster') {
-                        sh '''
+                    dir('terraform/cluster') {
                         sh """
-                        cd /home/jenkins
                         terraform plan \
                             -var="client_id=${CLIENT_ID}" \
                             -var="client_secret=${CLIENT_SECRET}" \
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}" \
                             -out=tfplan
-                        '''
                         """
                     }
                 }
@@ -91,14 +78,13 @@ pipeline {
                 script {
                     dir('terraform/cluster') {
                         sh """
-                        cd /home/jenkins
                         terraform apply -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
                             -var="client_secret=${CLIENT_SECRET}" \
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
-
-                        export ACR_URL=$(terraform output raw acr_url)
+                        
+                        export ACR_URL=$(terraform output -raw acr_url)
                         export ACR_NAME=$(terraform output -raw acr_name)
                         export AKS_API_SERVER=$(terraform output -raw aks_api_server)
                         export AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
@@ -122,17 +108,15 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     echo "Logging in to Azure Container Registry"
                     az acr login --name ${env.ACR_NAME}
 
-                    echo "Building and pushing Frontend Docker Image"
+                    echo "Building and pushing Docker images"
                     docker build -t ${env.ACR_URL}/frontend:${BUILD_NUMBER} frontend/
                     docker build -t ${env.ACR_URL}/frontend:latest frontend/
                     docker push ${env.ACR_URL}/frontend:${BUILD_NUMBER}
                     docker push ${env.ACR_URL}/frontend:latest
                     
-                    echo "Building and pushing Backend Docker Image"
                     docker build -t ${env.ACR_URL}/backend:${BUILD_NUMBER} backend/
                     docker build -t ${env.ACR_URL}/backend:latest backend/
                     docker push ${env.ACR_URL}/backend:${BUILD_NUMBER}
@@ -149,7 +133,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     echo "Getting AKS credentials"
                     az aks get-credentials \
                         --resource-group ${env.RESOURCE_GROUP_NAME} \
@@ -167,7 +150,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend-deployment.yaml
                     sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend-deployment.yaml
                     sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
@@ -184,7 +166,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     echo "Deploying to Kubernetes"
                     kubectl apply -f k8s/frontend-deployment.yaml
                     kubectl apply -f k8s/backend-deployment.yaml
@@ -202,7 +183,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                    cd /home/jenkins
                     echo "Verifying deployment"
                     kubectl get pods -l app=frontend
                     kubectl get pods -l app=backend
@@ -224,7 +204,6 @@ pipeline {
                     echo "Destroying Terraform resources"
                     dir('terraform/cluster') {
                         sh """
-                        cd /home/jenkins
                         terraform destroy -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
                             -var="client_secret=${CLIENT_SECRET}" \
@@ -240,12 +219,10 @@ pipeline {
     post {
         always {
             script {
-                sh """
-                cd /home/jenkins
-                docker system prune -af --volumes || true
-                """
+                sh 'docker system prune -af --volumes || true'
             }
         }
+
         success {
             echo "Pipeline executed successfully!"
             script {
@@ -256,17 +233,18 @@ pipeline {
                 }
             }
         }
+
         failure {
             echo "Pipeline failed!"
             script {
                 sh """
-                cd /home/jenkins
                 kubectl get events --sort-by=.metadata.creationTimestamp || true
                 kubectl logs --tail=50 -l app=frontend || true
                 kubectl logs --tail=50 -l app=backend || true
                 """
             }
         }
+
         cleanup {
             cleanWs()
         }
