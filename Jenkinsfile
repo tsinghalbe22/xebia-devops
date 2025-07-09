@@ -98,11 +98,11 @@ pipeline {
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
 
-                        export ACR_URL=\$(terraform output raw acr_url)
-                        export ACR_NAME=\$(terraform output -raw acr_name)
-                        export AKS_API_SERVER=\$(terraform output -raw aks_api_server)
-                        export AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
-                        export RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
+                        export ACR_URL=$(terraform output raw acr_url)
+                        export ACR_NAME=$(terraform output -raw acr_name)
+                        export AKS_API_SERVER=$(terraform output -raw aks_api_server)
+                        export AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
+                        export RESOURCE_GROUP_NAME=$(terraform output -raw resource_group_name)
 
                         echo "ACR URL: ${ACR_URL}"
                         echo "ACR Name: ${ACR_NAME}"
