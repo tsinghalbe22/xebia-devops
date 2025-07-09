@@ -232,7 +232,7 @@ pipeline {
     post {
         always {
             script {
-                // Clean up Docker images
+                sh "echo Test"
 
             }
         }
