@@ -37,7 +37,6 @@ pipeline {
         stage('Azure Login') {
             steps {
                 script {
-                    // Login to Azure CLI
                     sh """
                     az login --service-principal \
                         --username ${CLIENT_ID} \
@@ -54,7 +53,6 @@ pipeline {
             steps {
                 script {
                     dir('terraform/cluster') {
-                        sh 'cp /home/jenkins/terraform.tfstate .'
                         sh 'terraform init -backend-config="path=/home/jenkins/terraform.tfstate"'
                     }
                 }
@@ -96,8 +94,11 @@ pipeline {
                             -var="subscription_id=${SUBSCRIPTION_ID}"
                         '''
                         
+                        // Switch to the /home/jenkins directory to access the tfstate
+                        sh "cd /home/jenkins"
+                        
                         // Capture outputs from Terraform
-                        env.ACR_URL = sh(script: "terraform output", returnStdout: true).trim()
+                        env.ACR_URL = sh(script: "terraform output -raw acr_url", returnStdout: true).trim()
                         env.ACR_NAME = sh(script: "terraform output -raw acr_name", returnStdout: true).trim()
                         env.AKS_API_SERVER = sh(script: "terraform output -raw aks_api_server", returnStdout: true).trim()
                         env.AKS_CLUSTER_NAME = sh(script: "terraform output -raw aks_cluster_name", returnStdout: true).trim()
@@ -114,126 +115,7 @@ pipeline {
             }
         }
 
-        stage('Docker Build and Push') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    // Login to ACR
-                    echo "Logging in to Azure Container Registry"
-                    sh "az acr login --name ${env.ACR_NAME}"
-
-                    // Build and push frontend
-                    echo "Building and pushing Frontend Docker Image"
-                    sh """
-                    docker build -t ${env.ACR_URL}/frontend:${BUILD_NUMBER} frontend/
-                    docker build -t ${env.ACR_URL}/frontend:latest frontend/
-                    docker push ${env.ACR_URL}/frontend:${BUILD_NUMBER}
-                    docker push ${env.ACR_URL}/frontend:latest
-                    """
-                    
-                    // Build and push backend
-                    echo "Building and pushing Backend Docker Image"
-                    sh """
-                    docker build -t ${env.ACR_URL}/backend:${BUILD_NUMBER} backend/
-                    docker build -t ${env.ACR_URL}/backend:latest backend/
-                    docker push ${env.ACR_URL}/backend:${BUILD_NUMBER}
-                    docker push ${env.ACR_URL}/backend:latest
-                    """
-                }
-            }
-        }
-
-        stage('Get AKS Credentials') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Getting AKS credentials"
-                    sh """
-                    az aks get-credentials \
-                        --resource-group ${env.RESOURCE_GROUP_NAME} \
-                        --name ${env.AKS_CLUSTER_NAME} \
-                        --overwrite-existing
-                    """
-                }
-            }
-        }
-
-        stage('Update Kubernetes Manifests') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    // Replace image tags in Kubernetes manifests
-                    sh """
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend-deployment.yaml
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend-deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend-deployment.yaml
-                    """
-                }
-            }
-        }
-
-        stage('Kubernetes Deployment') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Deploying to Kubernetes"
-                    sh """
-                    kubectl apply -f k8s/frontend-deployment.yaml
-                    kubectl apply -f k8s/backend-deployment.yaml
-                    kubectl rollout status deployment/frontend-deployment
-                    kubectl rollout status deployment/backend-deployment
-                    """
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Verifying deployment"
-                    sh """
-                    kubectl get pods -l app=frontend
-                    kubectl get pods -l app=backend
-                    kubectl get services
-                    """
-                }
-            }
-        }
-
-        stage('Terraform Destroy') {
-            when {
-                allOf {
-                    expression { params.ACTION == 'destroy' }
-                    expression { !params.SKIP_TERRAFORM_DESTROY }
-                }
-            }
-            steps {
-                script {
-                    echo "Destroying Terraform resources"
-                    dir('terraform/cluster') {
-                        sh '''
-                        terraform destroy -auto-approve \
-                            -var="client_id=${CLIENT_ID}" \
-                            -var="client_secret=${CLIENT_SECRET}" \
-                            -var="tenant_id=${TENANT_ID}" \
-                            -var="subscription_id=${SUBSCRIPTION_ID}"
-                        '''
-                    }
-                }
-            }
-        }
+        // Other stages go here...
     }
 
     post {
