@@ -51,24 +51,24 @@ pipeline {
         }
 
         stage('Terraform Plan') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh """
-                        terraform plan \
-                            -var="client_id=${CLIENT_ID}" \
-                            -var="client_secret=${CLIENT_SECRET}" \
-                            -var="tenant_id=${TENANT_ID}" \
-                            -var="subscription_id=${SUBSCRIPTION_ID}" \
-                            -out=tfplan
-                        """
-                    }
-                }
+    when {
+        expression { params.ACTION == 'deploy' }
+    }
+    steps {
+        script {
+            dir('terraform/cluster') {
+                sh """
+                terraform plan \
+                    -var="client_id=${CLIENT_ID}" \
+                    -var="client_secret=${CLIENT_SECRET}" \
+                    -var="tenant_id=${TENANT_ID}" \
+                    -var="subscription_id=${SUBSCRIPTION_ID}" \
+                    -out=tfplan
+                """
             }
         }
+    }
+}
 
         stage('Terraform Apply') {
             when {
