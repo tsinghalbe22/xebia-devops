@@ -38,6 +38,7 @@ pipeline {
             steps {
                 script {
                     sh """
+                    cd /home/jenkins
                     az login --service-principal \
                         --username ${CLIENT_ID} \
                         --password ${CLIENT_SECRET} \
@@ -66,14 +67,15 @@ pipeline {
             steps {
                 script {
                     dir('terraform/cluster') {
-                        sh '''
+                        sh """
+                        cd /home/jenkins
                         terraform plan \
                             -var="client_id=${CLIENT_ID}" \
                             -var="client_secret=${CLIENT_SECRET}" \
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}" \
                             -out=tfplan
-                        '''
+                        """
                     }
                 }
             }
@@ -86,43 +88,165 @@ pipeline {
             steps {
                 script {
                     dir('terraform/cluster') {
-                        sh '''
+                        sh """
+                        cd /home/jenkins
                         terraform apply -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
                             -var="client_secret=${CLIENT_SECRET}" \
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
-                        '''
-                        
-                        // Switch to the /home/jenkins directory to access the tfstate
-                        sh "cd /home/jenkins"
-                        
-                        // Capture outputs from Terraform
-                        env.ACR_URL = sh(script: "terraform output -raw acr_url", returnStdout: true).trim()
-                        env.ACR_NAME = sh(script: "terraform output -raw acr_name", returnStdout: true).trim()
-                        env.AKS_API_SERVER = sh(script: "terraform output -raw aks_api_server", returnStdout: true).trim()
-                        env.AKS_CLUSTER_NAME = sh(script: "terraform output -raw aks_cluster_name", returnStdout: true).trim()
-                        env.RESOURCE_GROUP_NAME = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
 
-                        // Output for debugging
-                        echo "ACR URL: ${env.ACR_URL}"
-                        echo "ACR Name: ${env.ACR_NAME}"
-                        echo "AKS API Server: ${env.AKS_API_SERVER}"
-                        echo "AKS Cluster Name: ${env.AKS_CLUSTER_NAME}"
-                        echo "Resource Group: ${env.RESOURCE_GROUP_NAME}"
+                        # Capture outputs from Terraform
+                        export ACR_URL=\$(terraform output raw acr_url)
+                        export ACR_NAME=\$(terraform output -raw acr_name)
+                        export AKS_API_SERVER=\$(terraform output -raw aks_api_server)
+                        export AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
+                        export RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
+
+                        # Output for debugging
+                        echo "ACR URL: \${ACR_URL}"
+                        echo "ACR Name: \${ACR_NAME}"
+                        echo "AKS API Server: \${AKS_API_SERVER}"
+                        echo "AKS Cluster Name: \${AKS_CLUSTER_NAME}"
+                        echo "Resource Group: \${RESOURCE_GROUP_NAME}"
+                        """
                     }
                 }
             }
         }
 
-        // Other stages go here...
+        stage('Docker Build and Push') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh """
+                    cd /home/jenkins
+                    # Login to ACR
+                    echo "Logging in to Azure Container Registry"
+                    az acr login --name ${env.ACR_NAME}
+
+                    # Build and push frontend
+                    echo "Building and pushing Frontend Docker Image"
+                    docker build -t ${env.ACR_URL}/frontend:${BUILD_NUMBER} frontend/
+                    docker build -t ${env.ACR_URL}/frontend:latest frontend/
+                    docker push ${env.ACR_URL}/frontend:${BUILD_NUMBER}
+                    docker push ${env.ACR_URL}/frontend:latest
+                    
+                    # Build and push backend
+                    echo "Building and pushing Backend Docker Image"
+                    docker build -t ${env.ACR_URL}/backend:${BUILD_NUMBER} backend/
+                    docker build -t ${env.ACR_URL}/backend:latest backend/
+                    docker push ${env.ACR_URL}/backend:${BUILD_NUMBER}
+                    docker push ${env.ACR_URL}/backend:latest
+                    """
+                }
+            }
+        }
+
+        stage('Get AKS Credentials') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh """
+                    cd /home/jenkins
+                    echo "Getting AKS credentials"
+                    az aks get-credentials \
+                        --resource-group ${env.RESOURCE_GROUP_NAME} \
+                        --name ${env.AKS_CLUSTER_NAME} \
+                        --overwrite-existing
+                    """
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifests') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh """
+                    cd /home/jenkins
+                    # Replace image tags in Kubernetes manifests
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend-deployment.yaml
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend-deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend-deployment.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Kubernetes Deployment') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh """
+                    cd /home/jenkins
+                    echo "Deploying to Kubernetes"
+                    kubectl apply -f k8s/frontend-deployment.yaml
+                    kubectl apply -f k8s/backend-deployment.yaml
+                    kubectl rollout status deployment/frontend-deployment
+                    kubectl rollout status deployment/backend-deployment
+                    """
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh """
+                    cd /home/jenkins
+                    echo "Verifying deployment"
+                    kubectl get pods -l app=frontend
+                    kubectl get pods -l app=backend
+                    kubectl get services
+                    """
+                }
+            }
+        }
+
+        stage('Terraform Destroy') {
+            when {
+                allOf {
+                    expression { params.ACTION == 'destroy' }
+                    expression { !params.SKIP_TERRAFORM_DESTROY }
+                }
+            }
+            steps {
+                script {
+                    echo "Destroying Terraform resources"
+                    dir('terraform/cluster') {
+                        sh """
+                        cd /home/jenkins
+                        terraform destroy -auto-approve \
+                            -var="client_id=${CLIENT_ID}" \
+                            -var="client_secret=${CLIENT_SECRET}" \
+                            -var="tenant_id=${TENANT_ID}" \
+                            -var="subscription_id=${SUBSCRIPTION_ID}"
+                        """
+                    }
+                }
+            }
+        }
     }
 
     post {
         always {
             script {
-                // Clean up Docker images
                 sh """
+                cd /home/jenkins
+                # Clean up Docker images
                 docker system prune -af --volumes || true
                 """
             }
@@ -140,8 +264,9 @@ pipeline {
         failure {
             echo "Pipeline failed!"
             script {
-                // Get recent logs for debugging
+                # Get recent logs for debugging
                 sh """
+                cd /home/jenkins
                 kubectl get events --sort-by=.metadata.creationTimestamp || true
                 kubectl logs --tail=50 -l app=frontend || true
                 kubectl logs --tail=50 -l app=backend || true
@@ -149,7 +274,7 @@ pipeline {
             }
         }
         cleanup {
-            // Clean up workspace
+            # Clean up workspace
             cleanWs()
         }
     }
