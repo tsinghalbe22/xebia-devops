@@ -21,7 +21,7 @@ pipeline {
             steps {
                 script {
                     // Initialize Terraform
-                    sh 'terraform init terraform/cluster'
+                    sh 'terraform init -chdir=terraform/cluster'
                 }
             }
         }
@@ -35,7 +35,8 @@ pipeline {
                                    -var="client_secret=${CLIENT_SECRET}" \
                                    -var="tenant_id=${TENANT_ID}" \
                                    -var="subscription_id=${SUBSCRIPTION_ID}" \
-                                   -out=tfplan terraform/cluster
+                                   -out=tfplan terraform/cluster \
+                                   -chdir=terraform/cluster
                     '''
                 }
             }
@@ -51,7 +52,7 @@ pipeline {
                                      -var="client_secret=${CLIENT_SECRET}" \
                                      -var="tenant_id=${TENANT_ID}" \
                                      -var="subscription_id=${SUBSCRIPTION_ID}" \
-                                     terraform/cluster
+                                     -chdir=terraform/cluster
                     '''
                     // Capture the ACR URL and AKS endpoint from Terraform output
                     def acrUrl = sh(script: "terraform output -raw acr_url terraform/cluster", returnStdout: true).trim()
