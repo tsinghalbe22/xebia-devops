@@ -1,11 +1,37 @@
+# Variables - Add these at the top of your file
+variable "client_id" {
+  description = "Azure Client ID"
+  type        = string
+  default     = ""
+}
+
+variable "client_secret" {
+  description = "Azure Client Secret"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "tenant_id" {
+  description = "Azure Tenant ID"
+  type        = string
+  default     = ""
+}
+
+variable "subscription_id" {
+  description = "Azure Subscription ID"
+  type        = string
+  default     = ""
+}
+
+# Provider configuration - FIXED
 provider "azurerm" {
   features {}
 
-  # Fetch the client_id from environment variables if not provided in tfvars
-  client_id       = var.client_id != "" ? var.client_id : (lookup(var, "CLIENT_ID", "") != "" ? lookup(var, "CLIENT_ID", "") : "")
-  client_secret   = var.client_secret != "" ? var.client_secret : (lookup(var, "CLIENT_SECRET", "") != "" ? lookup(var, "CLIENT_SECRET", "") : "")
-  tenant_id       = var.tenant_id != "" ? var.tenant_id : (lookup(var, "TENANT_ID", "") != "" ? lookup(var, "TENANT_ID", "") : "")
-  subscription_id = var.subscription_id != "" ? var.subscription_id : (lookup(var, "SUBSCRIPTION_ID", "") != "" ? lookup(var, "SUBSCRIPTION_ID", "") : "")
+  client_id       = var.client_id
+  client_secret   = var.client_secret
+  tenant_id       = var.tenant_id
+  subscription_id = var.subscription_id
 }
 
 resource "azurerm_resource_group" "rg" {
@@ -55,4 +81,15 @@ resource "azurerm_subnet" "subnet" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
+}
+
+# Add outputs for Jenkins pipeline
+output "acr_url" {
+  description = "The URL of the Azure Container Registry"
+  value       = azurerm_container_registry.acr.login_server
+}
+
+output "aks_api_server" {
+  description = "The API server endpoint for the AKS cluster"
+  value       = azurerm_kubernetes_cluster.aks.kube_config.0.host
 }
