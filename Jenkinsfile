@@ -104,11 +104,11 @@ pipeline {
                         export AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
                         export RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
 
-                        echo "ACR URL: \${ACR_URL}"
-                        echo "ACR Name: \${ACR_NAME}"
-                        echo "AKS API Server: \${AKS_API_SERVER}"
-                        echo "AKS Cluster Name: \${AKS_CLUSTER_NAME}"
-                        echo "Resource Group: \${RESOURCE_GROUP_NAME}"
+                        echo "ACR URL: ${ACR_URL}"
+                        echo "ACR Name: ${ACR_NAME}"
+                        echo "AKS API Server: ${AKS_API_SERVER}"
+                        echo "AKS Cluster Name: ${AKS_CLUSTER_NAME}"
+                        echo "Resource Group: ${RESOURCE_GROUP_NAME}"
                         """
                     }
                 }
