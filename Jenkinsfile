@@ -6,11 +6,11 @@ pipeline {
         CLIENT_SECRET = credentials('azure-client-secret')
         TENANT_ID = credentials('azure-tenant-id')
         SUBSCRIPTION_ID = credentials('azure-subscription-id')
-        ACR_URL = ""  // This will be set later
+        ACR_URL = "dockeracrxyz.azurecr.io"  // This will be set later
         AKS_API_SERVER = ""
-        RESOURCE_GROUP_NAME = ""
-        ACR_NAME = ""
-        AKS_CLUSTER_NAME = ""
+        RESOURCE_GROUP_NAME = "docker-vm-rg-terraform"
+        ACR_NAME = "dockeracrxyz"
+        AKS_CLUSTER_NAME = "docker-aks-cluster"
         KUBECONFIG = "/home/jenkins/.kube/config"
     }
 
@@ -94,56 +94,6 @@ pipeline {
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
                         '''
-                        
-                        // Capture outputs from Terraform
-                        env.ACR_URL = sh(script: "terraform output -raw acr_url", returnStdout: true).trim()
-                        env.ACR_NAME = sh(script: "terraform output -raw acr_name", returnStdout: true).trim()
-                        env.AKS_API_SERVER = sh(script: "terraform output -raw aks_api_server", returnStdout: true).trim()
-                        env.AKS_CLUSTER_NAME = sh(script: "terraform output -raw aks_cluster_name", returnStdout: true).trim()
-                        env.RESOURCE_GROUP_NAME = sh(script: "terraform output -raw resource_group_name", returnStdout: true).trim()
-
-                        // Output for debugging
-                        echo "ACR URL: ${env.ACR_URL}"
-                        echo "ACR Name: ${env.ACR_NAME}"
-                        echo "AKS API Server: ${env.AKS_API_SERVER}"
-                        echo "AKS Cluster Name: ${env.AKS_CLUSTER_NAME}"
-                        echo "Resource Group: ${env.RESOURCE_GROUP_NAME}"
-                    }
-                }
-            }
-        }
-
-        stage('Terraform Output') {
-            steps {
-                script {
-                    dir('/home/jenkins') {
-                       sh """
-                    terraform output -raw acr_url > acr_url.txt
-                    terraform output -raw acr_name > acr_name.txt
-                    terraform output -raw aks_api_server > aks_api_server.txt
-                    terraform output -raw aks_cluster_name > aks_cluster_name.txt
-                    terraform output -raw resource_group_name > resource_group_name.txt
-                """
-
-                        def acrUrl = readFile("/home/jenkins/acr_url.txt").trim()
-                    def acrName = readFile("acr_name.txt").trim()
-                    def aksApiServer = readFile("aks_api_server.txt").trim()
-                    def aksClusterName = readFile("aks_cluster_name.txt").trim()
-                    def resourceGroupName = readFile("resource_group_name.txt").trim()
-
-                    // Set environment variables for subsequent stages
-                    env.ACR_URL = acrUrl
-                    env.ACR_NAME = acrName
-                    env.AKS_API_SERVER = aksApiServer
-                    env.AKS_CLUSTER_NAME = aksClusterName
-                    env.RESOURCE_GROUP_NAME = resourceGroupName
-
-                echo "${acrURL}"
-                echo "ACR URL (from env): ${env.ACR_URL}"
-                echo "ACR Name (from env): ${env.ACR_NAME}"
-                echo "AKS API Server (from env): ${env.AKS_API_SERVER}"
-                echo "AKS Cluster Name (from env): ${env.AKS_CLUSTER_NAME}"
-                echo "Resource Group (from env): ${env.RESOURCE_GROUP_NAME}"
                     }
                 }
             }
