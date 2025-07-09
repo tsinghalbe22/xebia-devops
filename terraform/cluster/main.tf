@@ -9,7 +9,7 @@ provider "azurerm" {
 }
 
 resource "azurerm_resource_group" "rg" {
-  name     = "docker-vm-rg"
+  name     = "docker-vm-rg-terraform"
   location = "Central India"
 }
 
