@@ -158,61 +158,41 @@ pipeline {
             }
         }
 
-        stage('Create Backend Secret') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Creating backend secret"
-                    sh """
-                    # Create backend secret with default values
-                    kubectl create secret generic backend-secret \
-                        --from-literal=DATABASE_URL="postgresql://user:pass@localhost:5432/mydb" \
-                        --from-literal=SECRET_KEY="your-secret-key-here" \
-                        --from-literal=DEBUG="false" \
-                        --from-literal=ALLOWED_HOSTS="*" \
-                        --dry-run=client -o yaml | kubectl apply -f -
-                    """
-                }
-            }
-        }
-
         stage('Update Kubernetes Manifests') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Updating Kubernetes Manifests"
-                    
-                    // List contents of k8s to debug
-                    sh 'ls -R k8s/'
-                    
-                    // Get static IP for service update
-                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
-                    
-                    // Replace image tags in Kubernetes manifests
-                    sh """
-                    echo 'Updating frontend deployment.yaml'
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
+    when {
+        expression { params.ACTION == 'deploy' }
+    }
+    steps {
+        script {
+            echo "Updating Kubernetes Manifests"
+            
+            // Get static IP for service update
+            def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+            
+            // Replace image tags in Kubernetes manifests
+            sh """
+            echo 'Updating frontend deployment.yaml'
+            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
+            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
 
-                    echo 'Updating backend deployment.yaml'
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
-                    
-                    # Update frontend service to use LoadBalancer with static IP
-                    sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/frontend/service.yaml
-                    sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${staticIP}' k8s/frontend/service.yaml
-                    
-                    # Add image pull secrets to deployments
-                    sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
-                    sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
-                    """
-                }
-            }
+            echo 'Updating backend deployment.yaml'
+            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
+            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
+            
+            # Update backend secret with static IP
+            sed -i 's|{{STATIC_IP_ORIGIN}}|http://${staticIP}:3000|g' k8s/backend/secret.yaml
+            
+            # Update frontend service to use LoadBalancer with static IP
+            sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/frontend/service.yaml
+            sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${staticIP}' k8s/frontend/service.yaml
+            
+            # Add image pull secrets to deployments
+            sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
+            sed -i '/spec:/a\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
+            """
         }
+    }
+}
 
         stage('Kubernetes Deployment') {
             when {
@@ -222,11 +202,12 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes"
                     sh """
-                    kubectl apply -f k8s/frontend/deployment.yaml
-                    kubectl apply -f k8s/backend/deployment.yaml
-                    kubectl apply -f k8s/frontend/service.yaml
-                    kubectl apply -f k8s/backend/service.yaml
-                    """
+kubectl apply -f k8s/backend/secret.yaml
+kubectl apply -f k8s/frontend/deployment.yaml
+kubectl apply -f k8s/backend/deployment.yaml
+kubectl apply -f k8s/frontend/service.yaml
+kubectl apply -f k8s/backend/service.yaml
+"""
                 }
             }
         }
