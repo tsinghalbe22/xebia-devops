@@ -125,7 +125,7 @@ pipeline {
                     terraform output -raw resource_group_name > resource_group_name.txt
                 """
 
-                        def acrUrl = readFile("acr_url.txt").trim()
+                        def acrUrl = readFile("/home/jenkins/acr_url.txt").trim()
                     def acrName = readFile("acr_name.txt").trim()
                     def aksApiServer = readFile("aks_api_server.txt").trim()
                     def aksClusterName = readFile("aks_cluster_name.txt").trim()
@@ -138,7 +138,7 @@ pipeline {
                     env.AKS_CLUSTER_NAME = aksClusterName
                     env.RESOURCE_GROUP_NAME = resourceGroupName
 
-
+                echo "${acrURL}"
                 echo "ACR URL (from env): ${env.ACR_URL}"
                 echo "ACR Name (from env): ${env.ACR_NAME}"
                 echo "AKS API Server (from env): ${env.AKS_API_SERVER}"
