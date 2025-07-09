@@ -20,8 +20,10 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 script {
-                    // Initialize Terraform
-                    sh 'terraform init -chdir=terraform/cluster'
+                    // Initialize Terraform in the cluster directory using 'cd'
+                    sh '''
+                    cd terraform/cluster && terraform init
+                    '''
                 }
             }
         }
@@ -31,12 +33,11 @@ pipeline {
                 script {
                     // Run Terraform plan
                     sh '''
-                    terraform plan -var="client_id=${CLIENT_ID}" \
-                                   -var="client_secret=${CLIENT_SECRET}" \
-                                   -var="tenant_id=${TENANT_ID}" \
-                                   -var="subscription_id=${SUBSCRIPTION_ID}" \
-                                   -out=tfplan terraform/cluster \
-                                   -chdir=terraform/cluster
+                    cd terraform/cluster && terraform plan -var="client_id=${CLIENT_ID}" \
+                                                         -var="client_secret=${CLIENT_SECRET}" \
+                                                         -var="tenant_id=${TENANT_ID}" \
+                                                         -var="subscription_id=${SUBSCRIPTION_ID}" \
+                                                         -out=tfplan
                     '''
                 }
             }
@@ -45,18 +46,17 @@ pipeline {
         stage('Terraform Apply') {
             steps {
                 script {
-                    // Apply Terraform
+                    // Apply Terraform configuration
                     sh '''
-                    terraform apply -auto-approve \
-                                     -var="client_id=${CLIENT_ID}" \
-                                     -var="client_secret=${CLIENT_SECRET}" \
-                                     -var="tenant_id=${TENANT_ID}" \
-                                     -var="subscription_id=${SUBSCRIPTION_ID}" \
-                                     -chdir=terraform/cluster
+                    cd terraform/cluster && terraform apply -auto-approve \
+                                                          -var="client_id=${CLIENT_ID}" \
+                                                          -var="client_secret=${CLIENT_SECRET}" \
+                                                          -var="tenant_id=${TENANT_ID}" \
+                                                          -var="subscription_id=${SUBSCRIPTION_ID}"
                     '''
                     // Capture the ACR URL and AKS endpoint from Terraform output
-                    def acrUrl = sh(script: "terraform output -raw acr_url terraform/cluster", returnStdout: true).trim()
-                    def aksApiServer = sh(script: "terraform output -raw aks_api_server terraform/cluster", returnStdout: true).trim()
+                    def acrUrl = sh(script: "cd terraform/cluster && terraform output -raw acr_url", returnStdout: true).trim()
+                    def aksApiServer = sh(script: "cd terraform/cluster && terraform output -raw aks_api_server", returnStdout: true).trim()
                     env.ACR_URL = acrUrl
                     env.AKS_API_SERVER = aksApiServer
 
@@ -70,7 +70,12 @@ pipeline {
         stage('Docker Build and Push') {
             steps {
                 script {
-                    // Build and push Docker images (Frontend and Backend) to ACR
+                    // Login to ACR before building and pushing Docker images
+                    echo "Logging in to Azure Container Registry"
+                    sh """
+                    az acr login --name ${ACR_URL}
+                    """
+
                     echo "Building Frontend Docker Image"
                     sh """
                     docker build -t ${ACR_URL}/frontend:latest frontend/
@@ -89,7 +94,8 @@ pipeline {
         stage('Kubernetes Deployment') {
             steps {
                 script {
-                    // Update kubeconfig with the AKS credentials and deploy the app
+                    // Get the credentials for AKS using Azure CLI
+                    echo "Getting AKS credentials"
                     sh """
                     az aks get-credentials --resource-group docker-vm-rg --name docker-aks-cluster --overwrite-existing
                     kubectl apply -f k8s/frontend-deployment.yaml
@@ -103,7 +109,7 @@ pipeline {
             steps {
                 script {
                     // Optionally, clean up the workspace and any resources
-                    sh 'terraform destroy -auto-approve terraform/cluster'
+                    sh 'cd terraform/cluster && terraform destroy -auto-approve'
                 }
             }
         }
