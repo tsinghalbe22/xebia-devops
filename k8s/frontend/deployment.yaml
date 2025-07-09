@@ -14,14 +14,14 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: "${ACR_URL}/frontend:latest"
+          image: "{{ACR_URL}}/frontend:latest"  # Changed from ${ACR_URL} to {{ACR_URL}}
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:
             - name: REACT_APP_BASE_URL
-              value: "http://$(POD_IP):30080"  # Kubernetes will resolve POD_IP dynamically
+              value: "http://$(POD_IP):30080"
             - name: POD_IP
               valueFrom:
                 fieldRef:
-                  fieldPath: status.podIP  # The fieldPath points to the pod's IP address
+                  fieldPath: status.podIP
