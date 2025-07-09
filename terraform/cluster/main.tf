@@ -1,30 +1,4 @@
-# Variables - Add these at the top of your file
-variable "client_id" {
-  description = "Azure Client ID"
-  type        = string
-  default     = ""
-}
-
-variable "client_secret" {
-  description = "Azure Client Secret"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "tenant_id" {
-  description = "Azure Tenant ID"
-  type        = string
-  default     = ""
-}
-
-variable "subscription_id" {
-  description = "Azure Subscription ID"
-  type        = string
-  default     = ""
-}
-
-# Provider configuration - FIXED
+# Provider configuration
 provider "azurerm" {
   features {}
 
@@ -54,7 +28,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location           = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "dockeraks"
-  kubernetes_version  = "1.30.12"  # Choose a stable version
+  kubernetes_version  = "1.30.6"  # Updated to a more stable version
   
   default_node_pool {
     name       = "default"
@@ -81,15 +55,4 @@ resource "azurerm_subnet" "subnet" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
-}
-
-# Add outputs for Jenkins pipeline
-output "acr_url" {
-  description = "The URL of the Azure Container Registry"
-  value       = azurerm_container_registry.acr.login_server
-}
-
-output "aks_api_server" {
-  description = "The API server endpoint for the AKS cluster"
-  value       = azurerm_kubernetes_cluster.aks.kube_config.0.host
 }
