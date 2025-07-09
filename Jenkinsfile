@@ -50,54 +50,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Init') {
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh 'terraform init -backend-config="path=/home/jenkins/terraform.tfstate"'
-                    }
-                }
-            }
-        }
-
-        stage('Terraform Plan') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh '''
-                        terraform plan \
-                            -var="client_id=${CLIENT_ID}" \
-                            -var="client_secret=${CLIENT_SECRET}" \
-                            -var="tenant_id=${TENANT_ID}" \
-                            -var="subscription_id=${SUBSCRIPTION_ID}" \
-                            -out=tfplan
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Terraform Apply') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh '''
-                        terraform apply -auto-approve \
-                            -var="client_id=${CLIENT_ID}" \
-                            -var="client_secret=${CLIENT_SECRET}" \
-                            -var="tenant_id=${TENANT_ID}" \
-                            -var="subscription_id=${SUBSCRIPTION_ID}"
-                        '''
-                    }
-                }
-            }
-        }
+        
 
         stage('Docker Build and Push') {
             when {
