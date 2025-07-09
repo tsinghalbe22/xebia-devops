@@ -96,7 +96,7 @@ pipeline {
                         '''
                         
                         // Capture outputs from Terraform
-                        env.ACR_URL = sh(script: "terraform output raw acr_url", returnStdout: true).trim()
+                        env.ACR_URL = sh(script: "terraform output -raw acr_url", returnStdout: true).trim()
                         env.ACR_NAME = sh(script: "terraform output -raw acr_name", returnStdout: true).trim()
                         env.AKS_API_SERVER = sh(script: "terraform output -raw aks_api_server", returnStdout: true).trim()
                         env.AKS_CLUSTER_NAME = sh(script: "terraform output -raw aks_cluster_name", returnStdout: true).trim()
