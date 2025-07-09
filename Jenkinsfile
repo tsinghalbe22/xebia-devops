@@ -152,15 +152,23 @@ pipeline {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
-                script {
-                    // Replace image tags in Kubernetes manifests
-                    sh """
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend-deployment.yaml
-                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend-deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
-                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend-deployment.yaml
-                    """
-                }
+                 script {
+            echo "Updating Kubernetes Manifests"
+            
+            // List contents of k8s to debug
+            sh 'ls -R k8s/'
+
+            // Replace image tags in Kubernetes manifests
+            sh """
+            echo 'Updating frontend deployment.yaml'
+            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
+            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
+
+            echo 'Updating backend deployment.yaml'
+            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
+            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
+            """
+        }
             }
         }
 
@@ -172,11 +180,13 @@ pipeline {
                 script {
                     echo "Deploying to Kubernetes"
                     sh """
-                    kubectl apply -f k8s/frontend-deployment.yaml
-                    kubectl apply -f k8s/backend-deployment.yaml
-                    kubectl rollout status deployment/frontend-deployment
-                    kubectl rollout status deployment/backend-deployment
-                    """
+            kubectl apply -f k8s/frontend/deployment.yaml
+            kubectl apply -f k8s/backend/deployment.yaml
+            kubectl apply -f k8s/frontend/service.yaml
+            kubectl apply -f k8s/backend/service.yaml
+            kubectl rollout status deployment/frontend-deployment
+            kubectl rollout status deployment/backend-deployment
+            """
                 }
             }
         }
