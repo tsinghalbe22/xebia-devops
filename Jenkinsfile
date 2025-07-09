@@ -95,6 +95,8 @@ pipeline {
                         --resource-group ${env.RESOURCE_GROUP_NAME} \
                         --name ${env.AKS_CLUSTER_NAME} \
                         --overwrite-existing
+
+                        az aks update -n ${env.AKS_CLUSTER_NAME} -g ${env.RESOURCE_GROUP_NAME} --attach-acr ${env.ACR_NAME}
                     """
                 }
             }
