@@ -248,7 +248,6 @@ pipeline {
             script {
                 sh """
                 cd /home/jenkins
-                # Clean up Docker images
                 docker system prune -af --volumes || true
                 """
             }
