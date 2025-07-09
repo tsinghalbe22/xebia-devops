@@ -66,7 +66,8 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/cluster') {
+                     dir('terraform/cluster') {
+                        sh '''
                         sh """
                         cd /home/jenkins
                         terraform plan \
@@ -75,6 +76,7 @@ pipeline {
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}" \
                             -out=tfplan
+                        '''
                         """
                     }
                 }
