@@ -117,25 +117,26 @@ pipeline {
             steps {
                 script {
                     dir('/home/jenkins') {
-                       sh """
-                    export ACR_URL=\$(terraform output -raw acr_url)
-                    export ACR_NAME=\$(terraform output -raw acr_name)
-                    export AKS_API_SERVER=\$(terraform output -raw aks_api_server)
-                    export AKS_CLUSTER_NAME=\$(terraform output -raw aks_cluster_name)
-                    export RESOURCE_GROUP_NAME=\$(terraform output -raw resource_group_name)
+                        // Capture Terraform outputs and store them in variables
+                        def ACR_URL = sh(returnStdout: true, script: 'terraform output -raw acr_url').toString().trim()
+                        def ACR_NAME = sh(returnStdout: true, script: 'terraform output -raw acr_name').toString().trim()
+                        def AKS_API_SERVER = sh(returnStdout: true, script: 'terraform output -raw aks_api_server').toString().trim()
+                        def AKS_CLUSTER_NAME = sh(returnStdout: true, script: 'terraform output -raw aks_cluster_name').toString().trim()
+                        def RESOURCE_GROUP_NAME = sh(returnStdout: true, script: 'terraform output -raw resource_group_name').toString().trim()
 
-                    echo "ACR URL: \${ACR_URL}"
-                    echo "ACR Name: \${ACR_NAME}"
-                    echo "AKS API Server: \${AKS_API_SERVER}"
-                    echo "AKS Cluster Name: \${AKS_CLUSTER_NAME}"
-                    echo "Resource Group: \${RESOURCE_GROUP_NAME}"
-                """
+                        // Set environment variables so they can be accessed in later stages
+                        env.ACR_URL = ACR_URL
+                        env.ACR_NAME = ACR_NAME
+                        env.AKS_API_SERVER = AKS_API_SERVER
+                        env.AKS_CLUSTER_NAME = AKS_CLUSTER_NAME
+                        env.RESOURCE_GROUP_NAME = RESOURCE_GROUP_NAME
 
-                echo "ACR URL (from env): ${env.ACR_URL}"
-                echo "ACR Name (from env): ${env.ACR_NAME}"
-                echo "AKS API Server (from env): ${env.AKS_API_SERVER}"
-                echo "AKS Cluster Name (from env): ${env.AKS_CLUSTER_NAME}"
-                echo "Resource Group (from env): ${env.RESOURCE_GROUP_NAME}"
+                        // Print the Terraform outputs to confirm they are captured
+                        echo "ACR URL: ${env.ACR_URL}"
+                        echo "ACR Name: ${env.ACR_NAME}"
+                        echo "AKS API Server: ${env.AKS_API_SERVER}"
+                        echo "AKS Cluster Name: ${env.AKS_CLUSTER_NAME}"
+                        echo "Resource Group: ${env.RESOURCE_GROUP_NAME}"
                     }
                 }
             }
