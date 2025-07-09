@@ -264,7 +264,6 @@ pipeline {
         failure {
             echo "Pipeline failed!"
             script {
-                # Get recent logs for debugging
                 sh """
                 cd /home/jenkins
                 kubectl get events --sort-by=.metadata.creationTimestamp || true
@@ -274,7 +273,6 @@ pipeline {
             }
         }
         cleanup {
-            # Clean up workspace
             cleanWs()
         }
     }
