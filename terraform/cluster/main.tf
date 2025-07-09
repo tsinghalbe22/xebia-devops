@@ -1,10 +1,11 @@
 provider "azurerm" {
   features {}
 
-  client_id       = var.client_id != "" ? var.client_id : (terraform.env("CLIENT_ID") != "" ? terraform.env("CLIENT_ID") : "")
-  client_secret   = var.client_secret != "" ? var.client_secret : (terraform.env("CLIENT_SECRET") != "" ? terraform.env("CLIENT_SECRET") : "")
-  tenant_id       = var.tenant_id != "" ? var.tenant_id : (terraform.env("TENANT_ID") != "" ? terraform.env("TENANT_ID") : "")
-  subscription_id = var.subscription_id != "" ? var.subscription_id : (terraform.env("SUBSCRIPTION_ID") != "" ? terraform.env("SUBSCRIPTION_ID") : "")
+  # Fetch the client_id from environment variables if not provided in tfvars
+  client_id       = var.client_id != "" ? var.client_id : (lookup(var, "CLIENT_ID", "") != "" ? lookup(var, "CLIENT_ID", "") : "")
+  client_secret   = var.client_secret != "" ? var.client_secret : (lookup(var, "CLIENT_SECRET", "") != "" ? lookup(var, "CLIENT_SECRET", "") : "")
+  tenant_id       = var.tenant_id != "" ? var.tenant_id : (lookup(var, "TENANT_ID", "") != "" ? lookup(var, "TENANT_ID", "") : "")
+  subscription_id = var.subscription_id != "" ? var.subscription_id : (lookup(var, "SUBSCRIPTION_ID", "") != "" ? lookup(var, "SUBSCRIPTION_ID", "") : "")
 }
 
 resource "azurerm_resource_group" "rg" {
@@ -55,5 +56,3 @@ resource "azurerm_subnet" "subnet" {
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 }
-
-# Output the required information
