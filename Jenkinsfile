@@ -12,6 +12,11 @@ pipeline {
         TF_VAR_client_secret = credentials('azure-client-secret')
         TF_VAR_tenant_id = credentials('azure-tenant-id')
         TF_VAR_subscription_id = credentials('azure-subscription-id')
+
+        MONGO_URI = credentials('mongo-uri')                  // Set this in Jenkins credentials
+        EMAIL = credentials('smtp-email')                     // Set this in Jenkins credentials
+        EMAIL_PASSWORD = credentials('smtp-email-password')   // Set this in Jenkins credentials
+        JWT_SECRET = credentials('jwt-secret-key')            // Set this in Jenkins credentials
         
         // Terraform state file paths
         TERRAFORM_DIR = './terraform/cluster'
@@ -123,26 +128,61 @@ pipeline {
                 }
             }
         }
-        
-        stage('Reload Prometheus Config') {
+
+        stage('Inject Public IP into Environment Files') {
     steps {
         script {
             def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
-            sh """
-                # Replace {{target}} with actual IP
-                sed 's/{{target}}/${publicIP}/g' monitoring/prometheus.yml > /opt/monitoring-configs/prometheus.yml
 
-                # Reload Prometheus config
-                if [ \$(docker ps -q -f name=prometheus) ]; then
-                    docker kill --signal=SIGHUP prometheus
-                    echo "Prometheus config reloaded with IP ${publicIP}"
-                else
-                    echo "Prometheus is not running. Please start it manually or via Ansible."
-                fi
+            sh """
+                echo "🔧 Replacing placeholders in backend/.env and frontend/frontend.env"
+
+                sed -i 's|{{ip}}|${publicIP}|g' backend/.env
+                sed -i 's|{{mongo}}|${MONGO_URI}|g' backend/.env
+                sed -i 's|{{email}}|${EMAIL}|g' backend/.env
+                sed -i 's|{{email-pass}}|${EMAIL_PASSWORD}|g' backend/.env
+                sed -i 's|{{jwt-key}}|${JWT_SECRET}|g' backend/.env
+
+                sed -i 's|{{ip}}|${publicIP}|g' frontend/frontend.env
             """
         }
     }
 }
+
+        stage('Run Ansible Playbook') {
+            steps {
+                script {
+                    def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+                    sh """
+                        echo "[servers]" > /ansible/cluster/inventory.ini
+                        echo "${publicIP} ansible_user=azureuser ansible_password=P@ssw0rd123! ansible_port=22 ansible_connection=ssh" >> /ansible/cluster/inventory.ini
+                        ansible-playbook -i /ansible/cluster/inventory.ini /ansible/cluster/site.yml \
+                            --ssh-extra-args="-o StrictHostKeyChecking=no"
+                    """
+                }
+            }
+        }
+
+        
+        stage('Run Ansible Playbook') {
+    steps {
+        script {
+            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+
+            sh """
+                cd /ansible/cluster
+
+                # Replace {{public}} placeholder with the actual public IP in inventory.ini
+                sed -i 's/{{public}}/${publicIP}/g' inventory.ini
+
+                # Run the Ansible playbook
+                ansible-playbook -i inventory.ini site.yml \\
+                    --ssh-extra-args="-o StrictHostKeyChecking=no"
+            """
+        }
+    }
+}
+
     }
     
     post {
