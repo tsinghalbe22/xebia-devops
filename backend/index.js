@@ -44,6 +44,10 @@ server.use("/wishlist",wishlistRoutes)
 server.use(trackRequests);
 server.use(metricsRouter);
 
+server.get('/test-metrics', (req, res) => {
+    res.json({ message: 'metrics route reachable' });
+});
+
 server.get("/",(req,res)=>{
     res.status(200).json({message:'running'})
 })
