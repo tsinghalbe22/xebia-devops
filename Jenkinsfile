@@ -20,7 +20,7 @@ pipeline {
         
         // Terraform state file paths
         TERRAFORM_DIR = './terraform/cluster'
-        JENKINS_STATE_DIR = '/home/jenkins'
+        JENKINS_STATE_DIR = '/home/azureuser/jenkins'
         STATE_FILE = 'terraform.tfstate'
         BACKUP_STATE_FILE = 'terraform.tfstate.backup'
     }
