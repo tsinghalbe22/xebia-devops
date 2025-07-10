@@ -20,8 +20,10 @@ pipeline {
                 script {
                     def tag = "${env.BUILD_NUMBER}"
 
-                    frontendImage = docker.build("${FRONTEND_IMAGE}:${tag}", "./frontend")
-                    backendImage  = docker.build("${BACKEND_IMAGE}:${tag}", "./backend")
+                    sh """
+                        docker build -t ${FRONTEND_IMAGE}:${tag} ./frontend
+                        docker build -t ${BACKEND_IMAGE}:${tag} ./backend
+                    """
                 }
             }
         }
@@ -31,16 +33,18 @@ pipeline {
                 script {
                     def tag = "${env.BUILD_NUMBER}"
 
-                    // Corrected login command for shell
                     sh """
                         echo "${DOCKERHUB_CREDENTIALS_PSW}" | docker login -u "${DOCKERHUB_CREDENTIALS_USR}" --password-stdin
+
+                        docker tag ${FRONTEND_IMAGE}:${tag} ${FRONTEND_IMAGE}:latest
+                        docker tag ${BACKEND_IMAGE}:${tag} ${BACKEND_IMAGE}:latest
+
+                        docker push ${FRONTEND_IMAGE}:${tag}
+                        docker push ${FRONTEND_IMAGE}:latest
+
+                        docker push ${BACKEND_IMAGE}:${tag}
+                        docker push ${BACKEND_IMAGE}:latest
                     """
-
-                    frontendImage.push(tag)
-                    frontendImage.push('latest')
-
-                    backendImage.push(tag)
-                    backendImage.push('latest')
                 }
             }
         }
