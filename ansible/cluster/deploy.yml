@@ -1,0 +1,113 @@
+---
+- name: Set up Docker and deploy frontend/backend using Docker Compose
+  hosts: servers
+  become: yes
+  tasks:
+
+    # 1. Install required packages for Docker installation
+    - name: Install prerequisites for Docker
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    # 2. Add Docker's official GPG key
+    - name: Create apt keyring directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    # 3. Add the Docker repository to Apt sources
+    - name: Add Docker repository to sources.list
+      shell: |
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    - name: Update apt sources
+      apt:
+        update_cache: yes
+
+    # 4. Install Docker and Docker Compose plugin
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    # 5. Start and enable Docker service
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # 6. Create deployment directory
+    - name: Create deployment directory
+      file:
+        path: /home/azureuser/deployment
+        state: directory
+        owner: azureuser
+        mode: '0755'
+
+    - name: Create deployment directory
+      file:
+        path: /home/azureuser/deployment/frontend
+        state: directory
+        owner: azureuser
+        mode: '0755'
+
+    - name: Create deployment directory
+      file:
+        path: /home/azureuser/deployment/backend
+        state: directory
+        owner: azureuser
+        mode: '0755'
+
+    # 7. Copy docker-compose.yml to the server
+    - name: Copy Docker Compose file
+      copy:
+        src: ../../docker-compose.yml    # 🔁 Update path if needed
+        dest: /home/azureuser/deployment/docker-compose.yml
+        owner: azureuser
+        mode: '0644'
+
+    - name: Copy backend .env file
+      copy:
+        src: ../../backend/.env
+        dest: /home/azureuser/deployment/backend/.env
+        owner: azureuser
+        mode: '0600'
+
+    - name: Copy frontend .env file
+      copy:
+        src: ../../frontend/.env
+        dest: /home/azureuser/deployment/frontend/.env
+        owner: azureuser
+        mode: '0600'
+
+
+    # 8. Stop existing containers (docker compose down)
+    - name: Stop and remove existing containers
+      shell: chdir=/home/azureuser/deployment docker compose down
+        
+
+    # 9. Start new containers
+    - name: Start containers using docker compose
+      shell: chdir=/home/azureuser/deployment docker compose up -d
