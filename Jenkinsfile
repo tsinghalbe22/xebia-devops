@@ -78,8 +78,6 @@ pipeline {
                         
                         # Initialize Terraform
                         terraform init
-
-                        cd terraform state
                     """
                 }
             }
@@ -89,8 +87,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                        ls --lah
-                    
                         cd ${TERRAFORM_DIR}
                         terraform plan 
                     """
