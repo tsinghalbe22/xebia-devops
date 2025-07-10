@@ -52,15 +52,22 @@ pipeline {
         }
 
         stage('Terraform Init') {
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh 'cp /home/jenkins/terraform.tf .'
-                        sh 'terraform init'
-                    }
-                }
+    steps {
+        script {
+            dir('terraform/cluster') {
+                sh '''
+                if [ -f /home/jenkins/terraform.tfstate ]; then
+                    cp /home/jenkins/terraform.tfstate .
+                else
+                    echo "terraform.tfstate not found, skipping copy."
+                fi
+
+                terraform init
+                '''
             }
         }
+    }
+}
 
         stage('Terraform Plan') {
             when {
