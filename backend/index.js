@@ -56,6 +56,11 @@ server.get("/", (req, res) => {
     res.status(200).json({ message: 'running' })
 })
 
+// Test metrics route
+server.get('/test-metrics', (req, res) => {
+    res.json({ message: 'metrics route reachable' });
+});
+
 server.listen(8000, () => {
     console.log('server [STARTED] ~ http://localhost:8000');
     console.log('Routes registered successfully');
