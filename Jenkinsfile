@@ -88,7 +88,11 @@ pipeline {
                 script {
                     sh """
                         cd ${TERRAFORM_DIR}
-                        terraform plan 
+                        terraform plan \\
+                  -var="client_id=${TF_VAR_client_id}" \\
+                  -var="client_secret=${TF_VAR_client_secret}" \\
+                  -var="tenant_id=${TF_VAR_tenant_id}" \\
+                  -var="subscription_id=${TF_VAR_subscription_id}" 
                     """
                 }
             }
@@ -99,18 +103,20 @@ pipeline {
                 script {
                     sh """
                         cd ${TERRAFORM_DIR}
-                        terraform apply -auto-approve
-                        
-                        # Save state files back to Jenkins home for persistence
-                        cp ${STATE_FILE} ${JENKINS_STATE_DIR}/ || true
-                        cp ${BACKUP_STATE_FILE} ${JENKINS_STATE_DIR}/ || true
-                        
-                        # Get the public IP for deployment
-                        PUBLIC_IP=\$(terraform output -raw public_ip_2)
-                        echo "Azure VM Public IP: \$PUBLIC_IP"
-                        
-                        # Store IP in a file for the next stage
-                        echo "\$PUBLIC_IP" > ${WORKSPACE}/public_ip.txt
+                        terraform apply -auto-approve \\
+                  -var="client_id=${TF_VAR_client_id}" \\
+                  -var="client_secret=${TF_VAR_client_secret}" \\
+                  -var="tenant_id=${TF_VAR_tenant_id}" \\
+                  -var="subscription_id=${TF_VAR_subscription_id}"
+
+                # Save state files back to Jenkins home for persistence
+                cp ${STATE_FILE} ${JENKINS_STATE_DIR}/ || true
+                cp ${BACKUP_STATE_FILE} ${JENKINS_STATE_DIR}/ || true
+
+                # Get the public IP for deployment
+                PUBLIC_IP=\$(terraform output -raw public_ip_2)
+                echo "Azure VM Public IP: \$PUBLIC_IP"
+                echo "\$PUBLIC_IP" > ${WORKSPACE}/public_ip.txt
                     """
                 }
             }
