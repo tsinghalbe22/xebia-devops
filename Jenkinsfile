@@ -31,6 +31,21 @@ pipeline {
                 checkout scm
             }
         }
+
+        stage('Clean Docker Environment') {
+    steps {
+        script {
+            sh """
+                # Remove any existing images with the same tag
+                docker rmi ${FRONTEND_IMAGE}:${env.BUILD_NUMBER} || true
+                docker rmi ${BACKEND_IMAGE}:${env.BUILD_NUMBER} || true
+                
+                # Optional: Clean up dangling images and build cache
+                docker system prune -f
+            """
+        }
+    }
+}
         
         stage('Build Docker Images') {
             steps {
