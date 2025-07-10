@@ -156,8 +156,6 @@ pipeline {
             def backendImage = "${env.BACKEND_IMAGE}:latest"
 
             sh """
-                cd /ansible/cluster
-
                 # Replace placeholders in docker-compose.yml
                 sed -i 's|{{frontend}}|${frontendImage}|g' docker-compose.yml
                 sed -i 's|{{backend}}|${backendImage}|g' docker-compose.yml
