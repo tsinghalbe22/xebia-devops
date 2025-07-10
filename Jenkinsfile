@@ -152,8 +152,9 @@ pipeline {
         stage('Configure Docker Compose') {
     steps {
         script {
-            def frontendImage = "${env.FRONTEND_IMAGE}:latest"
-            def backendImage = "${env.BACKEND_IMAGE}:latest"
+            def tag = "${env.BUILD_NUMBER}"
+            def frontendImage = "${env.FRONTEND_IMAGE}:${tag}"
+            def backendImage = "${env.BACKEND_IMAGE}:${tag}"
 
             sh """
                 # Replace placeholders in docker-compose.yml
