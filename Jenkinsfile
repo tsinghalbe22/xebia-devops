@@ -53,11 +53,16 @@ pipeline {
         stage('Terraform Init - Second VM') {
             steps {
                 script {
-                    dir('terraform/second-vm') {  // Changed path to be more specific
+                    dir('terraform/cluster') {  // Changed path to be more specific
                         sh '''
-                        # Initialize Terraform
-                        terraform init
-                        '''
+                if [ -f /home/jenkins/terraform.tfstate ]; then
+                    cp /home/jenkins/terraform.tfstate .
+                else
+                    echo "terraform.tfstate not found, skipping copy."
+                fi
+
+                terraform init
+                '''
                     }
                 }
             }
@@ -69,7 +74,7 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/second-vm') {
+                    dir('terraform/cluster') {
                         sh '''
                         terraform plan \
                             -var="client_id=${CLIENT_ID}" \
@@ -89,7 +94,7 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/second-vm') {
+                    dir('terraform/cluster') {
                         sh '''
                         terraform apply -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
@@ -108,7 +113,7 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/second-vm') {
+                    dir('terraform/cluster') {
                         sh '''
                         # Get the public IP of the second VM
                         SECOND_VM_IP=$(terraform output -raw public_ip_vm_2)
