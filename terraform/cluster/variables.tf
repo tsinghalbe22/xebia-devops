@@ -1,23 +1,24 @@
+# variables.tf - Add this to your terraform directory
 variable "client_id" {
-  description = "The client ID for the Azure Service Principal"
+  description = "Azure Client ID"
   type        = string
-  default     = ""
+  sensitive   = true
 }
 
 variable "client_secret" {
-  description = "The client secret for the Azure Service Principal"
+  description = "Azure Client Secret"
   type        = string
-  default     = ""
+  sensitive   = true
 }
 
 variable "tenant_id" {
-  description = "The tenant ID for the Azure subscription"
+  description = "Azure Tenant ID"
   type        = string
-  default     = ""
+  sensitive   = true
 }
 
 variable "subscription_id" {
-  description = "The subscription ID for the Azure account"
+  description = "Azure Subscription ID"
   type        = string
-  default     = ""
+  sensitive   = true
 }
