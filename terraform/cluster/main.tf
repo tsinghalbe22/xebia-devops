@@ -2,7 +2,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"  # Use latest stable 3.x version instead of exact "= 3"
+      version = "~> 3.0"
     }
   }
 }
@@ -16,108 +16,95 @@ provider "azurerm" {
   subscription_id = var.subscription_id
 }
 
-resource "azurerm_resource_group" "rg" {
-  name     = "docker-vm-rg"
-  location = "Central India"
+#— VARIABLES —#
+variable "client_id" {
+  type        = string
+  description = "Azure Client ID"
 }
 
-resource "azurerm_virtual_network" "vnet" {
+variable "client_secret" {
+  type        = string
+  description = "Azure Client Secret"
+  sensitive   = true
+}
+
+variable "tenant_id" {
+  type        = string
+  description = "Azure Tenant ID"
+}
+
+variable "subscription_id" {
+  type        = string
+  description = "Azure Subscription ID"
+}
+
+variable "admin_password" {
+  type        = string
+  description = "Password for the VM admin user"
+  sensitive   = true
+}
+
+#— DATA SOURCES (existing infra) —#
+data "azurerm_resource_group" "existing" {
+  name = "docker-vm-rg"
+}
+
+data "azurerm_virtual_network" "existing" {
   name                = "docker-vnet"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = data.azurerm_resource_group.existing.name
 }
 
-resource "azurerm_subnet" "subnet" {
+data "azurerm_subnet" "existing" {
   name                 = "docker-subnet"
-  resource_group_name  = azurerm_resource_group.rg.name
-  virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefixes     = ["10.0.1.0/24"]
+  resource_group_name  = data.azurerm_resource_group.existing.name
+  virtual_network_name = data.azurerm_virtual_network.existing.name
 }
 
-resource "azurerm_public_ip" "public_ip" {
-  name                = "public-ip"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
+data "azurerm_network_security_group" "existing" {
+  name                = "docker-nsg"
+  resource_group_name = data.azurerm_resource_group.existing.name
 }
 
-resource "azurerm_network_interface" "nic" {
-  name                = "docker-nic"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
+#— NEW PUBLIC IP & NIC for docker-vm-2 —#
+resource "azurerm_public_ip" "vm2_pip" {
+  name                = "docker-vm-2-pip"
+  location            = data.azurerm_resource_group.existing.location
+  resource_group_name = data.azurerm_resource_group.existing.name
+
+  allocation_method = "Static"
+  sku               = "Standard"
+}
+
+resource "azurerm_network_interface" "vm2_nic" {
+  name                = "docker-vm-2-nic"
+  location            = data.azurerm_resource_group.existing.location
+  resource_group_name = data.azurerm_resource_group.existing.name
 
   ip_configuration {
-    name                          = "docker-ip-config"
-    subnet_id                     = azurerm_subnet.subnet.id
+    name                          = "ipconfig2"
+    subnet_id                     = data.azurerm_subnet.existing.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.public_ip.id
+    public_ip_address_id          = azurerm_public_ip.vm2_pip.id
   }
 }
 
-# Network Security Group with SSH Allow Rule
-resource "azurerm_network_security_group" "nsg" {
-  name                = "docker-nsg"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-
-  security_rule {
-    name                       = "Allow-SSH"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  # Allow traffic on port 8080 for Jenkins
-  security_rule {
-    name                       = "Allow-Jenkins"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "8080"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
-
-  # Allow traffic on port 9000 for SonarQube
-  security_rule {
-    name                       = "Allow-SonarQube"
-    priority                   = 120
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "9000"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
-  }
+resource "azurerm_network_interface_security_group_association" "vm2_nic_nsg" {
+  network_interface_id      = azurerm_network_interface.vm2_nic.id
+  network_security_group_id = data.azurerm_network_security_group.existing.id
 }
 
-# Associate the NSG to the network interface
-resource "azurerm_network_interface_security_group_association" "nic_nsg_association" {
-  network_interface_id      = azurerm_network_interface.nic.id
-  network_security_group_id = azurerm_network_security_group.nsg.id
-}
+#— THE SECOND LINUX VM —#
 resource "azurerm_linux_virtual_machine" "vm2" {
   name                  = "docker-vm-2"
-  location              = azurerm_resource_group.rg2.location
-  resource_group_name   = azurerm_resource_group.rg2.name
+  location              = data.azurerm_resource_group.existing.location
+  resource_group_name   = data.azurerm_resource_group.existing.name
   size                  = "Standard_B2als_v2"
   admin_username        = "azureuser"
+  network_interface_ids = [azurerm_network_interface.vm2_nic.id]
 
-  # Allow password auth instead of SSH key
+  # password auth only
   disable_password_authentication = false
-  admin_password                  = test123
-
-  network_interface_ids = [azurerm_network_interface.nic2.id]
+  admin_password                  = var.admin_password
 
   os_disk {
     caching              = "ReadWrite"
@@ -132,6 +119,8 @@ resource "azurerm_linux_virtual_machine" "vm2" {
   }
 }
 
-output "public_ip" {
-  value = azurerm_public_ip.public_ip.ip_address
+#— OUTPUT —#
+output "public_ip_vm_2" {
+  description = "Static public IP of docker-vm-2"
+  value       = azurerm_public_ip.vm2_pip.ip_address
 }
