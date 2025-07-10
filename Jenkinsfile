@@ -55,7 +55,8 @@ pipeline {
             steps {
                 script {
                     dir('terraform/cluster') {
-                        sh 'terraform init -backend-config="path=/home/jenkins/terraform.tfstate"'
+                        sh 'cp /home/jenkins/terraform.tfstate .'
+                        sh 'terraform init'
                     }
                 }
             }
