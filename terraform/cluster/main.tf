@@ -76,7 +76,7 @@ resource "azurerm_linux_virtual_machine" "vm2" {
 
   # password auth only
   disable_password_authentication = false
-  admin_password                  = "test"
+  admin_password                  = "Test1!"
 
   os_disk {
     caching              = "ReadWrite"
