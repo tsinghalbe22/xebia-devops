@@ -20,7 +20,7 @@ pipeline {
         
         // Terraform state file paths
         TERRAFORM_DIR = './terraform/cluster'
-        JENKINS_STATE_DIR = '/home/jenkins'
+        JENKINS_STATE_DIR = '/home/azureuser/jenkins'
         STATE_FILE = 'terraform.tfstate'
         BACKUP_STATE_FILE = 'terraform.tfstate.backup'
     }
@@ -31,14 +31,29 @@ pipeline {
                 checkout scm
             }
         }
+
+        stage('Clean Docker Environment') {
+    steps {
+        script {
+            sh """
+                # Remove any existing images with the same tag
+                docker rmi ${FRONTEND_IMAGE}:${env.BUILD_NUMBER} || true
+                docker rmi ${BACKEND_IMAGE}:${env.BUILD_NUMBER} || true
+                
+                # Optional: Clean up dangling images and build cache
+                docker system prune -f
+            """
+        }
+    }
+}
         
         stage('Build Docker Images') {
             steps {
                 script {
                     def tag = "${env.BUILD_NUMBER}"
                     sh """
-                        docker build -t ${FRONTEND_IMAGE}:${tag} ./frontend
-                        docker build -t ${BACKEND_IMAGE}:${tag} ./backend
+                        docker build --no-cache -t ${FRONTEND_IMAGE}:${tag} ./frontend
+                        docker build --no-cache -t ${BACKEND_IMAGE}:${tag} ./backend
                     """
                 }
             }
@@ -152,8 +167,9 @@ pipeline {
         stage('Configure Docker Compose') {
     steps {
         script {
-            def frontendImage = "${env.FRONTEND_IMAGE}:latest"
-            def backendImage = "${env.BACKEND_IMAGE}:latest"
+            def tag = "${env.BUILD_NUMBER}"
+            def frontendImage = "${env.FRONTEND_IMAGE}:${tag}"
+            def backendImage = "${env.BACKEND_IMAGE}:${tag}"
 
             sh """
                 # Replace placeholders in docker-compose.yml
