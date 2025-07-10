@@ -155,12 +155,5 @@ pipeline {
         failure {
             echo '❌ Pipeline failed. Check logs for details.'
         }
-        always {
-            // Clean up temporary files
-            sh """
-                rm -f ${WORKSPACE}/public_ip.txt || true
-                rm -f ${TERRAFORM_DIR}/tfplan || true
-            """
-        }
     }
 }
