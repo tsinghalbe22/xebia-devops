@@ -37,8 +37,8 @@ pipeline {
                 script {
                     def tag = "${env.BUILD_NUMBER}"
                     sh """
-                        docker build -t ${FRONTEND_IMAGE}:${tag} ./frontend
-                        docker build -t ${BACKEND_IMAGE}:${tag} ./backend
+                        docker build --no-cache -t ${FRONTEND_IMAGE}:${tag} ./frontend
+                        docker build --no-cache -t ${BACKEND_IMAGE}:${tag} ./backend
                     """
                 }
             }
