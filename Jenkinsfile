@@ -129,10 +129,17 @@ pipeline {
         script {
             def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
 
-            // Replace {{target}} and write to shared mount path
             sh """
+                # Stop existing Prometheus container if it's running
+                if [ \$(docker ps -q -f name=prometheus) ]; then
+                    echo "Stopping existing Prometheus container..."
+                    docker stop prometheus
+                fi
+
+                # Replace {{target}} with public IP and generate Prometheus config
                 sed 's/{{target}}/${publicIP}/g' monitoring/prometheus.yml > /opt/monitoring-configs/prometheus.generated.yml
 
+                # Start Prometheus container
                 docker run -d --rm \\
                     --name prometheus \\
                     -p 9090:9090 \\
