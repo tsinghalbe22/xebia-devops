@@ -52,15 +52,21 @@ pipeline {
         }
 
         stage('Terraform Init') {
-            steps {
-                script {
-                    dir('terraform/cluster') {
-                        sh 'cp /home/jenkins/terraform.tf .'
-                        sh 'terraform init'
-                    }
-                }
+    steps {
+        script {
+            dir('terraform/cluster') {
+                sh '''
+                if [ -f /home/jenkins/terraform.tf ]; then
+                    cp /home/jenkins/terraform.tf .
+                else
+                    echo "terraform.tf not found, skipping copy."
+                fi
+
+                terraform init
+                '''
             }
         }
+    }
 
         stage('Terraform Plan') {
             when {
@@ -68,7 +74,6 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/cluster') {
                         sh '''
                         terraform plan \
                             -var="client_id=${CLIENT_ID}" \
@@ -77,7 +82,6 @@ pipeline {
                             -var="subscription_id=${SUBSCRIPTION_ID}" \
                             -out=tfplan
                         '''
-                    }
                 }
             }
         }
@@ -88,7 +92,6 @@ pipeline {
             }
             steps {
                 script {
-                    dir('terraform/cluster') {
                         sh '''
                         terraform apply -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
@@ -96,7 +99,6 @@ pipeline {
                             -var="tenant_id=${TENANT_ID}" \
                             -var="subscription_id=${SUBSCRIPTION_ID}"
                         '''
-                    }
                 }
             }
         }
