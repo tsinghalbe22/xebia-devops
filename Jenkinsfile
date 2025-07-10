@@ -78,6 +78,8 @@ pipeline {
                         
                         # Initialize Terraform
                         terraform init
+
+                        cd terraform state
                     """
                 }
             }
