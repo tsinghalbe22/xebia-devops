@@ -106,20 +106,18 @@ resource "azurerm_network_interface_security_group_association" "nic_nsg_associa
   network_interface_id      = azurerm_network_interface.nic.id
   network_security_group_id = azurerm_network_security_group.nsg.id
 }
-
-resource "azurerm_linux_virtual_machine" "vm" {
-  name                  = "docker-vm"
-  location              = azurerm_resource_group.rg.location
-  resource_group_name   = azurerm_resource_group.rg.name
+resource "azurerm_linux_virtual_machine" "vm2" {
+  name                  = "docker-vm-2"
+  location              = azurerm_resource_group.rg2.location
+  resource_group_name   = azurerm_resource_group.rg2.name
   size                  = "Standard_B2als_v2"
   admin_username        = "azureuser"
-  network_interface_ids = [azurerm_network_interface.nic.id]
-  disable_password_authentication = true
 
-  admin_ssh_key {
-    username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
-  }
+  # Allow password auth instead of SSH key
+  disable_password_authentication = false
+  admin_password                  = test123
+
+  network_interface_ids = [azurerm_network_interface.nic2.id]
 
   os_disk {
     caching              = "ReadWrite"
