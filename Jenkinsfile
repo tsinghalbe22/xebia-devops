@@ -7,8 +7,7 @@ pipeline {
         TENANT_ID = credentials('azure-tenant-id')
         SUBSCRIPTION_ID = credentials('azure-subscription-id')
         ACR_URL = "dockeracrxyz.azurecr.io"
-        AKS_API_SERVER = ""
-        RESOURCE_GROUP_NAME = "docker-vm-rg-terraform"
+        RESOURCE_GROUP_NAME = "docker-vm-rg"  // Fixed: matches your main.tf
         ACR_NAME = "dockeracrxyz"
         AKS_CLUSTER_NAME = "docker-aks-cluster"
         KUBECONFIG = "/home/jenkins/.kube/config"
@@ -51,31 +50,26 @@ pipeline {
             }
         }
 
-        stage('Terraform Init') {
-    steps {
-        script {
-            dir('terraform/cluster') {
-                sh '''
-                if [ -f /home/jenkins/terraform.tfstate ]; then
-                    cp /home/jenkins/terraform.tfstate .
-                else
-                    echo "terraform.tfstate not found, skipping copy."
-                fi
-
-                terraform init
-                '''
+        stage('Terraform Init - Second VM') {
+            steps {
+                script {
+                    dir('terraform/second-vm') {  // Changed path to be more specific
+                        sh '''
+                        # Initialize Terraform
+                        terraform init
+                        '''
+                    }
+                }
             }
         }
-    }
-}
 
-        stage('Terraform Plan') {
+        stage('Terraform Plan - Second VM') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
                 script {
-                    dir('terraform/cluster') {
+                    dir('terraform/second-vm') {
                         sh '''
                         terraform plan \
                             -var="client_id=${CLIENT_ID}" \
@@ -89,13 +83,13 @@ pipeline {
             }
         }
 
-        stage('Terraform Apply') {
+        stage('Terraform Apply - Second VM') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
                 script {
-                    dir('terraform/cluster') {
+                    dir('terraform/second-vm') {
                         sh '''
                         terraform apply -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
@@ -104,6 +98,74 @@ pipeline {
                             -var="subscription_id=${SUBSCRIPTION_ID}"
                         '''
                     }
+                }
+            }
+        }
+
+        stage('Get Second VM IP') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    dir('terraform/second-vm') {
+                        sh '''
+                        # Get the public IP of the second VM
+                        SECOND_VM_IP=$(terraform output -raw public_ip_vm_2)
+                        echo "Second VM Public IP: $SECOND_VM_IP"
+                        echo $SECOND_VM_IP > ../second_vm_ip.txt
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Wait for VM Ready') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh '''
+                    # Get the second VM IP
+                    SECOND_VM_IP=$(cat terraform/second_vm_ip.txt)
+                    echo "Waiting for VM to be accessible at: $SECOND_VM_IP"
+                    
+                    # Wait for VM to be ready for SSH
+                    echo "Waiting for SSH to be available..."
+                    timeout 300 bash -c "until nc -z $SECOND_VM_IP 22; do sleep 5; done"
+                    
+                    # Test SSH connectivity
+                    sshpass -p 'Test1!' ssh -o StrictHostKeyChecking=no azureuser@$SECOND_VM_IP 'echo "VM is ready for configuration"'
+                    
+                    echo "VM is ready for Ansible configuration"
+                    '''
+                }
+            }
+        }
+
+        stage('Run Ansible Playbook') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    sh '''
+                    # Get the second VM IP
+                    SECOND_VM_IP=$(cat terraform/second_vm_ip.txt)
+                    echo "Running Ansible playbook on VM: $SECOND_VM_IP"
+                    
+                    # Create dynamic inventory file
+                    cat > inventory.ini << EOF
+[docker_vms]
+$SECOND_VM_IP ansible_user=azureuser ansible_password=Test1! ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
+                    
+                    # Run Ansible playbook
+                    ansible-playbook -i inventory.ini playbooks/docker-setup.yml
+                    
+                    echo "Ansible configuration completed"
+                    '''
                 }
             }
         }
@@ -139,60 +201,7 @@ pipeline {
             }
         }
 
-        stage('Get AKS Credentials') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Getting AKS credentials"
-                    sh """
-                    az aks get-credentials \
-                        --resource-group ${env.RESOURCE_GROUP_NAME} \
-                        --name ${env.AKS_CLUSTER_NAME} \
-                        --overwrite-existing
-                    """
-                }
-            }
-        }
-
-        stage('Setup Shared Static IP') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Setting up shared static IP for Prometheus monitoring"
-                    sh """
-                    # Get the node resource group
-                    NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
-                    
-                    # Create static public IP if it doesn't exist
-                    if ! az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} > /dev/null 2>&1; then
-                        echo "Creating shared static IP for Prometheus monitoring..."
-                        az network public-ip create \
-                            --resource-group \$NODE_RG \
-                            --name ${env.STATIC_IP_NAME} \
-                            --sku Standard \
-                            --allocation-method static
-                    else
-                        echo "Shared static IP already exists"
-                    fi
-                    
-                    # Get the static IP address
-                    STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} --query "ipAddress" -o tsv)
-                    echo "Shared Static IP for Prometheus: \$STATIC_IP"
-                    
-                    # Store the IP for later use
-                    echo \$STATIC_IP > static_ip.txt
-                    """
-                }
-            }
-        }
-
-       
-
-        stage('Terraform Destroy') {
+        stage('Terraform Destroy - Second VM') {
             when {
                 allOf {
                     expression { params.ACTION == 'destroy' }
@@ -201,8 +210,8 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Destroying Terraform resources"
-                    dir('terraform/cluster') {
+                    echo "Destroying Second VM Terraform resources"
+                    dir('terraform/second-vm') {
                         sh '''
                         terraform destroy -auto-approve \
                             -var="client_id=${CLIENT_ID}" \
@@ -228,27 +237,24 @@ pipeline {
                 if (params.ACTION == 'deploy') {
                     echo "Deployment completed successfully!"
                     echo "ACR URL: ${env.ACR_URL}"
-                    echo "AKS Cluster: ${env.AKS_CLUSTER_NAME}"
                     
                     // Show access information
                     sh """
-                    echo "=== PROMETHEUS MONITORING SETUP ==="
-                    STATIC_IP=\$(cat static_ip.txt)
-                    echo "Shared Static IP: \$STATIC_IP"
-                    echo ""
-                    echo "Application URLs:"
-                    echo "Frontend: http://\$STATIC_IP:3000"
-                    echo "Backend: http://\$STATIC_IP:8000"
-                    echo "API: http://\$STATIC_IP/api"
-                    echo ""
-                    echo "Prometheus Scrape Endpoints:"
-                    echo "Frontend Metrics: http://\$STATIC_IP:3000/metrics"
-                    echo "Backend Metrics: http://\$STATIC_IP:8000/metrics"
-                    echo ""
-                    echo "Internal Service Names:"
-                    echo "Frontend: frontend-internal.default.svc.cluster.local:3000"
-                    echo "Backend: backend-internal.default.svc.cluster.local:8000"
-                    echo "===================================="
+                    echo "=== DEPLOYMENT INFORMATION ==="
+                    if [ -f terraform/second_vm_ip.txt ]; then
+                        SECOND_VM_IP=\$(cat terraform/second_vm_ip.txt)
+                        echo "Second VM IP: \$SECOND_VM_IP"
+                        echo ""
+                        echo "Application URLs on Second VM:"
+                        echo "Frontend: http://\$SECOND_VM_IP:3000"
+                        echo "Backend: http://\$SECOND_VM_IP:8000"
+                        echo ""
+                        echo "SSH Access:"
+                        echo "ssh azureuser@\$SECOND_VM_IP (password: Test1!)"
+                    else
+                        echo "Second VM IP file not found"
+                    fi
+                    echo "================================"
                     """
                 }
             }
@@ -256,28 +262,17 @@ pipeline {
         failure {
             echo "Pipeline failed!"
             script {
-                // Get recent logs for debugging
+                // Get debugging information
                 sh """
                 echo "=== DEBUGGING INFORMATION ==="
-                kubectl get events --sort-by=.metadata.creationTimestamp --tail=20 || true
+                echo "Current directory contents:"
+                ls -la
                 echo ""
-                echo "All pods:"
-                kubectl get pods -o wide || true
+                echo "Terraform directory contents:"
+                ls -la terraform/ || true
                 echo ""
-                echo "All services:"
-                kubectl get services -o wide || true
-                echo ""
-                echo "Ingress status:"
-                kubectl get ingress -o wide || true
-                echo ""
-                echo "LoadBalancer services:"
-                kubectl get svc -o wide | grep LoadBalancer || true
-                echo ""
-                echo "Frontend logs:"
-                kubectl logs --tail=50 -l app=frontend || true
-                echo ""
-                echo "Backend logs:"
-                kubectl logs --tail=50 -l app=backend || true
+                echo "Azure resources in resource group:"
+                az resource list --resource-group ${RESOURCE_GROUP_NAME} --output table || true
                 echo "=============================="
                 """
             }
