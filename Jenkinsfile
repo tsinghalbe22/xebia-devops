@@ -44,31 +44,22 @@ pipeline {
             }
         }
         
-        stage('Inject Public IP into Environment Files') {
-    steps {
-        script {
-            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
-            sh """
-                echo "🔧 Replacing placeholders in backend/.env and frontend/frontend.env"
-                
-                # Set environment variables for substitution
-                export PUBLIC_IP="${publicIP}"
-                export MONGO_URI="${MONGO_URI}"
-                export EMAIL="${EMAIL}"
-                export EMAIL_PASSWORD="${EMAIL_PASSWORD}"
-                export JWT_SECRET="${JWT_SECRET}"
-                
-                # Replace backend/.env
-                envsubst < backend/.env > backend/.env.tmp && mv backend/.env.tmp backend/.env
-                
-                # Replace frontend/.env
-                envsubst < frontend/.env > frontend/.env.tmp && mv frontend/.env.tmp frontend/.env
-                
-                echo "✅ Environment files updated successfully"
-            """
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    def tag = "${env.BUILD_NUMBER}"
+                    sh """
+                        echo "${DOCKERHUB_CREDENTIALS_PSW}" | docker login -u "${DOCKERHUB_CREDENTIALS_USR}" --password-stdin
+                        docker tag ${FRONTEND_IMAGE}:${tag} ${FRONTEND_IMAGE}:latest
+                        docker tag ${BACKEND_IMAGE}:${tag} ${BACKEND_IMAGE}:latest
+                        docker push ${FRONTEND_IMAGE}:${tag}
+                        docker push ${FRONTEND_IMAGE}:latest
+                        docker push ${BACKEND_IMAGE}:${tag}
+                        docker push ${BACKEND_IMAGE}:latest
+                    """
+                }
+            }
         }
-    }
-}
         
         stage('Setup Terraform') {
             steps {
@@ -142,17 +133,23 @@ pipeline {
     steps {
         script {
             def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
-
             sh """
                 echo "🔧 Replacing placeholders in backend/.env and frontend/frontend.env"
-
-                sed -i 's|{{ip}}|${publicIP}|g' backend/.env
-                sed -i 's|{{mongo}}|${MONGO_URI}|g' backend/.env
-                sed -i 's|{{email}}|${EMAIL}|g' backend/.env
-                sed -i 's|{{email-pass}}|${EMAIL_PASSWORD}|g' backend/.env
-                sed -i 's|{{jwt-key}}|${JWT_SECRET}|g' backend/.env
-
-                sed -i 's|{{ip}}|${publicIP}|g' frontend/.env
+                
+                # Set environment variables for substitution
+                export PUBLIC_IP="${publicIP}"
+                export MONGO_URI="${MONGO_URI}"
+                export EMAIL="${EMAIL}"
+                export EMAIL_PASSWORD="${EMAIL_PASSWORD}"
+                export JWT_SECRET="${JWT_SECRET}"
+                
+                # Replace backend/.env
+                envsubst < backend/.env > backend/.env.tmp && mv backend/.env.tmp backend/.env
+                
+                # Replace frontend/.env
+                envsubst < frontend/.env > frontend/.env.tmp && mv frontend/.env.tmp frontend/.env
+                
+                echo "✅ Environment files updated successfully"
             """
         }
     }
