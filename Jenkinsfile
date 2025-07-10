@@ -184,6 +184,26 @@ pipeline {
     }
 }
 
+stage('Reload Prometheus Config') {
+    steps {
+        script {
+            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+            sh """
+                # Replace {{target}} with actual IP
+                sed 's/{{target}}/${publicIP}/g' monitoring/prometheus.yml > /opt/monitoring-configs/prometheus.yml
+
+                # Reload Prometheus config
+                if [ \$(docker ps -q -f name=prometheus) ]; then
+                    docker kill --signal=SIGHUP prometheus
+                    echo "Prometheus config reloaded with IP ${publicIP}"
+                else
+                    echo "Prometheus is not running. Please start it manually or via Ansible."
+                fi
+            """
+        }
+    }
+}
+        
     }
     
     post {
