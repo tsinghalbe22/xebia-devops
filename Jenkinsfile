@@ -77,6 +77,7 @@ pipeline {
                         cd ${TERRAFORM_DIR}
                         
                         # Initialize Terraform
+                        pwd
                         terraform init
                     """
                 }
