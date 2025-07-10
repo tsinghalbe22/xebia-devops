@@ -149,19 +149,6 @@ pipeline {
     }
 }
 
-        stage('Run Ansible Playbook') {
-            steps {
-                script {
-                    def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
-                    sh """
-                        echo "[servers]" > /ansible/cluster/inventory.ini
-                        echo "${publicIP} ansible_user=azureuser ansible_password=P@ssw0rd123! ansible_port=22 ansible_connection=ssh" >> /ansible/cluster/inventory.ini
-                        ansible-playbook -i /ansible/cluster/inventory.ini /ansible/cluster/site.yml \
-                            --ssh-extra-args="-o StrictHostKeyChecking=no"
-                    """
-                }
-            }
-        }
 
         
         stage('Run Ansible Playbook') {
@@ -176,7 +163,7 @@ pipeline {
                 sed -i 's/{{public}}/${publicIP}/g' inventory.ini
 
                 # Run the Ansible playbook
-                ansible-playbook -i inventory.ini site.yml \\
+                ansible-playbook -i inventory.ini deploy.yml \\
                     --ssh-extra-args="-o StrictHostKeyChecking=no"
             """
         }
