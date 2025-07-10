@@ -16,34 +16,6 @@ provider "azurerm" {
   subscription_id = var.subscription_id
 }
 
-#— VARIABLES —#
-variable "client_id" {
-  type        = string
-  description = "Azure Client ID"
-}
-
-variable "client_secret" {
-  type        = string
-  description = "Azure Client Secret"
-  sensitive   = true
-}
-
-variable "tenant_id" {
-  type        = string
-  description = "Azure Tenant ID"
-}
-
-variable "subscription_id" {
-  type        = string
-  description = "Azure Subscription ID"
-}
-
-variable "admin_password" {
-  type        = string
-  description = "Password for the VM admin user"
-  sensitive   = true
-}
-
 #— DATA SOURCES (existing infra) —#
 data "azurerm_resource_group" "existing" {
   name = "docker-vm-rg"
