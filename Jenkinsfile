@@ -13,10 +13,10 @@ pipeline {
         TF_VAR_tenant_id = credentials('azure-tenant-id')
         TF_VAR_subscription_id = credentials('azure-subscription-id')
 
-        MONGO_URI = credentials('mongo-uri')                  // Set this in Jenkins credentials
-        EMAIL = credentials('smtp-email')                     // Set this in Jenkins credentials
-        EMAIL_PASSWORD = credentials('smtp-email-password')   // Set this in Jenkins credentials
-        JWT_SECRET = credentials('jwt-secret-key')            // Set this in Jenkins credentials
+        MONGO_URI = "test"                  // Set this in Jenkins credentials
+        EMAIL = "test"                     // Set this in Jenkins credentials
+        EMAIL_PASSWORD = "test"   // Set this in Jenkins credentials
+        JWT_SECRET = "test"            // Set this in Jenkins credentials
         
         // Terraform state file paths
         TERRAFORM_DIR = './terraform/cluster'
