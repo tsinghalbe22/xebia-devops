@@ -92,11 +92,7 @@ pipeline {
                         ls --lah
                     
                         cd ${TERRAFORM_DIR}
-                        terraform plan -out=tfplan \
-                            -var="client_id=${TF_VAR_client_id}" \
-                            -var="client_secret=${TF_VAR_client_secret}" \
-                            -var="tenant_id=${TF_VAR_tenant_id}" \
-                            -var="subscription_id=${TF_VAR_subscription_id}"
+                        terraform plan 
                     """
                 }
             }
@@ -107,7 +103,7 @@ pipeline {
                 script {
                     sh """
                         cd ${TERRAFORM_DIR}
-                        terraform apply -auto-approve tfplan
+                        terraform apply -auto-approve
                         
                         # Save state files back to Jenkins home for persistence
                         cp ${STATE_FILE} ${JENKINS_STATE_DIR}/ || true
