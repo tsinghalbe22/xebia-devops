@@ -157,7 +157,7 @@ pipeline {
             def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
 
             sh """
-                cd /ansible/cluster
+                cd ./ansible/cluster
 
                 # Replace {{public}} placeholder with the actual public IP in inventory.ini
                 sed -i 's/{{public}}/${publicIP}/g' inventory.ini
