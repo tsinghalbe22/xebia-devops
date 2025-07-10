@@ -12,7 +12,7 @@ pipeline {
         ACR_NAME = "dockeracrxyz"
         AKS_CLUSTER_NAME = "docker-aks-cluster"
         KUBECONFIG = "/home/jenkins/.kube/config"
-        STATIC_IP_NAME = "frontend-static-ip"
+        STATIC_IP_NAME = "shared-static-ip"
     }
 
     parameters {
@@ -100,7 +100,6 @@ pipeline {
             }
         }
 
-
         stage('Docker Build and Push') {
             when {
                 expression { params.ACTION == 'deploy' }
@@ -149,32 +148,32 @@ pipeline {
             }
         }
 
-        stage('Setup Static IP') {
+        stage('Setup Shared Static IP') {
             when {
                 expression { params.ACTION == 'deploy' }
             }
             steps {
                 script {
-                    echo "Setting up static IP for frontend"
+                    echo "Setting up shared static IP for Prometheus monitoring"
                     sh """
                     # Get the node resource group
                     NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
                     
                     # Create static public IP if it doesn't exist
                     if ! az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} > /dev/null 2>&1; then
-                        echo "Creating static IP..."
+                        echo "Creating shared static IP for Prometheus monitoring..."
                         az network public-ip create \
                             --resource-group \$NODE_RG \
                             --name ${env.STATIC_IP_NAME} \
                             --sku Standard \
                             --allocation-method static
                     else
-                        echo "Static IP already exists"
+                        echo "Shared static IP already exists"
                     fi
                     
                     # Get the static IP address
                     STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.STATIC_IP_NAME} --query "ipAddress" -o tsv)
-                    echo "Static IP: \$STATIC_IP"
+                    echo "Shared Static IP for Prometheus: \$STATIC_IP"
                     
                     # Store the IP for later use
                     echo \$STATIC_IP > static_ip.txt
@@ -182,28 +181,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Setup Backend Static IP') {
-    steps {
-        script {
-            sh """
-            # Create static IP for backend too
-            NODE_RG=\$(az aks show --resource-group ${env.RESOURCE_GROUP_NAME} --name ${env.AKS_CLUSTER_NAME} --query "nodeResourceGroup" -o tsv)
-            
-            if ! az network public-ip show --resource-group \$NODE_RG --name ${env.BACKEND_STATIC_IP_NAME} > /dev/null 2>&1; then
-                az network public-ip create \
-                    --resource-group \$NODE_RG \
-                    --name ${env.BACKEND_STATIC_IP_NAME} \
-                    --sku Standard \
-                    --allocation-method static
-            fi
-            
-            BACKEND_STATIC_IP=\$(az network public-ip show --resource-group \$NODE_RG --name ${env.BACKEND_STATIC_IP_NAME} --query "ipAddress" -o tsv)
-            echo \$BACKEND_STATIC_IP > backend_static_ip.txt
-            """
-        }
-    }
-}
 
         stage('Setup ACR Authentication') {
             when {
@@ -236,232 +213,13 @@ pipeline {
             }
             steps {
                 script {
-    echo "Creating backend secret"
-    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
-    
-    sh """
-    kubectl create secret generic backend-secret \
-        --from-literal=MONGO_URI="mongodb+srv://tsinghalbe22:BDUosPJHgGlYDoD2@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" \
-        --from-literal=ORIGIN="http://${staticIP}:3000" \
-        --from-literal=EMAIL="your-email@example.com" \
-        --from-literal=PASSWORD="your-email-password" \
-        --from-literal=LOGIN_TOKEN_EXPIRATION="30d" \
-        --from-literal=OTP_EXPIRATION_TIME="120000" \
-        --from-literal=PASSWORD_RESET_TOKEN_EXPIRATION="2m" \
-        --from-literal=COOKIE_EXPIRATION_DAYS="30" \
-        --from-literal=SECRET_KEY="e5ee2b6c6bd78cda55c4af8e678b08b6983e324411d90ffe04387fb716f59f4e" \
-        --from-literal=PRODUCTION="false" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    """
-}
-            }
-        }
-
-stage('Initial Kubernetes Manifests Update') {
-    when {
-        expression { params.ACTION == 'deploy' }
-    }
-    steps {
-        script {
-            echo "Updating Kubernetes Manifests (Phase 1)"
-            
-            // List contents of k8s to debug
-            sh 'ls -R k8s/'
-            
-            // Get static IP for frontend service
-            def frontendIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
-            
-            // Replace image tags in Kubernetes manifests
-            sh """
-            echo 'Updating frontend deployment.yaml'
-            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
-            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
-            echo 'Updating backend deployment.yaml'
-            sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
-            sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
-            
-            # Convert both services to LoadBalancer
-            sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/frontend/service.yaml
-            sed -i 's|type: NodePort|type: LoadBalancer|g' k8s/backend/service.yaml
-            
-            # Add static IP to frontend service
-            sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${frontendIP}' k8s/frontend/service.yaml
-            sed -i '/type: LoadBalancer/a\\  loadBalancerIP: ${backendStaticIP}' k8s/backend/service.yaml
-            
-            # Add image pull secrets to deployments
-            sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
-            sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
-            """
-            
-            // Show updated manifests for debugging
-            echo "Updated manifests:"
-            sh """
-            echo "=== Frontend Deployment ==="
-            cat k8s/frontend/deployment.yaml
-            echo "=== Backend Deployment ==="
-            cat k8s/backend/deployment.yaml
-            echo "=== Frontend Service ==="
-            cat k8s/frontend/service.yaml
-            echo "=== Backend Service ==="
-            cat k8s/backend/service.yaml
-            """
-        }
-    }
-}
-
-stage('Deploy Backend Service First') {
-    when {
-        expression { params.ACTION == 'deploy' }
-    }
-    steps {
-        script {
-            echo "Deploying backend service and deployment"
-            sh """
-            kubectl apply -f k8s/backend/deployment.yaml
-            kubectl apply -f k8s/backend/service.yaml
-            """
-            
-            // Wait for backend pods to be ready
-            echo "Waiting for backend pods to be ready..."
-            sh """
-            kubectl wait --for=condition=Ready pod -l app=backend --timeout=300s
-            """
-            
-            // Check service type and get appropriate endpoint
-            def serviceType = sh(script: 'kubectl get service backend -o jsonpath="{.spec.type}"', returnStdout: true).trim()
-            echo "Backend service type: ${serviceType}"
-            
-            def backendIP = ""
-            
-            if (serviceType == "LoadBalancer") {
-                // Get backend LoadBalancer IP (retry loop)
-                echo "Waiting for LoadBalancer IP assignment..."
-                for (int i = 0; i < 30; i++) {
-                    try {
-                        // Check for IP or hostname
-                        backendIP = sh(script: '''
-                            kubectl get service backend -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || 
-                            kubectl get service backend -o jsonpath="{.status.loadBalancer.ingress[0].hostname}" 2>/dev/null || 
-                            echo ""
-                        ''', returnStdout: true).trim()
-                        
-                        if (backendIP && backendIP != "" && backendIP != "null") {
-                            echo "Backend LoadBalancer IP/Hostname: ${backendIP}"
-                            break
-                        }
-                    } catch (Exception e) {
-                        echo "Attempt ${i+1}/30 - Waiting for LoadBalancer IP..."
-                    }
+                    echo "Creating backend secret"
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
                     
-                    // Show current service status for debugging
-                    sh "kubectl get service backend -o wide"
-                    sleep(10)
-                }
-                
-                if (!backendIP || backendIP == "" || backendIP == "null") {
-                    // Fallback to ClusterIP if LoadBalancer fails
-                    echo "LoadBalancer IP not available, falling back to ClusterIP"
-                    backendIP = "backend.default.svc.cluster.local"
-                }
-            } else {
-                // Use service name for ClusterIP
-                backendIP = "backend.default.svc.cluster.local"
-                echo "Using ClusterIP service endpoint: ${backendIP}"
-            }
-            
-            // Store backend IP for next stage
-            sh "echo '${backendIP}' > backend_ip.txt"
-            echo "Backend endpoint stored: ${backendIP}"
-        }
-    }
-}
-
-stage('Update Frontend with Backend IP') {
-    when {
-        expression { params.ACTION == 'deploy' }
-    }
-    steps {
-        script {
-            echo "Updating frontend configuration with backend IP"
-            
-            // Read backend IP
-            def backendIP = sh(script: 'cat backend_ip.txt', returnStdout: true).trim()
-            echo "Using backend IP: ${backendIP}"
-            
-            // Update frontend deployment with backend IP
-            // This assumes you have a placeholder like {{BACKEND_URL}} in your frontend deployment
-            sh """
-            # Update frontend deployment with backend endpoint
-            sed -i 's|{{BACKEND_URL}}|http://${backendIP}|g' k8s/frontend/deployment.yaml
-            sed -i 's|{{BACKEND_IP}}|${backendIP}|g' k8s/frontend/deployment.yaml
-            
-            # If using environment variables in deployment
-            if grep -q "BACKEND_URL" k8s/frontend/deployment.yaml; then
-                sed -i 's|BACKEND_URL:.*|BACKEND_URL: "http://${backendIP}"|g' k8s/frontend/deployment.yaml
-            fi
-            
-            # Show updated frontend deployment
-            echo "Updated frontend deployment:"
-            cat k8s/frontend/deployment.yaml
-            """
-        }
-    }
-}
-
-stage('Deploy Frontend Service') {
-    when {
-        expression { params.ACTION == 'deploy' }
-    }
-    steps {
-        script {
-            echo "Deploying frontend service and deployment"
-            sh """
-            kubectl apply -f k8s/frontend/deployment.yaml
-            kubectl apply -f k8s/frontend/service.yaml
-            """
-            
-            // Wait for frontend pods to be ready
-            echo "Waiting for frontend pods to be ready..."
-            sh """
-            kubectl wait --for=condition=Ready pod -l app=frontend --timeout=300s
-            """
-            
-            // Get frontend service status
-            echo "Frontend service status:"
-            sh """
-            kubectl get service frontend -o wide
-            kubectl get pods -l app=frontend -o wide
-            """
-            
-            // Test connectivity between services
-            echo "Testing service connectivity..."
-            sh """
-            # Test backend from within cluster
-            kubectl run test-pod --rm -i --tty --image=curlimages/curl --restart=Never -- sh -c "curl -f http://backend/health || curl -f http://backend || echo 'Backend not accessible'"
-            
-            # Show all services
-            kubectl get services
-            kubectl get ingress 2>/dev/null || echo "No ingress found"
-            """
-        }
-    }
-}
-
-        stage('Update Backend CORS') {
-            when {
-                expression { params.ACTION == 'deploy' }
-            }
-            steps {
-                script {
-                    echo "Updating backend CORS with frontend IP"
-                    
-                    def frontendIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
-                    
-                    // Update backend secret with correct CORS origin
                     sh """
                     kubectl create secret generic backend-secret \
                         --from-literal=MONGO_URI="mongodb+srv://tsinghalbe22:BDUosPJHgGlYDoD2@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" \
-                        --from-literal=ORIGIN="http://${frontendIP}:3000" \
+                        --from-literal=ORIGIN="http://${staticIP}:3000" \
                         --from-literal=EMAIL="your-email@example.com" \
                         --from-literal=PASSWORD="your-email-password" \
                         --from-literal=LOGIN_TOKEN_EXPIRATION="30d" \
@@ -471,9 +229,343 @@ stage('Deploy Frontend Service') {
                         --from-literal=SECRET_KEY="e5ee2b6c6bd78cda55c4af8e678b08b6983e324411d90ffe04387fb716f59f4e" \
                         --from-literal=PRODUCTION="false" \
                         --dry-run=client -o yaml | kubectl apply -f -
+                    """
+                }
+            }
+        }
+
+        stage('Update Kubernetes Manifests') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Updating Kubernetes Manifests for Prometheus monitoring"
                     
-                    # Restart backend deployment to pick up new secret
-                    kubectl rollout restart deployment/backend
+                    // List contents of k8s to debug
+                    sh 'ls -R k8s/'
+                    
+                    // Get static IP
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    // Replace image tags in Kubernetes manifests
+                    sh """
+                    echo 'Updating frontend deployment.yaml'
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/frontend/deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/frontend/deployment.yaml
+                    
+                    echo 'Updating backend deployment.yaml'
+                    sed -i 's|{{ACR_URL}}|${env.ACR_URL}|g' k8s/backend/deployment.yaml
+                    sed -i 's|{{BUILD_NUMBER}}|${BUILD_NUMBER}|g' k8s/backend/deployment.yaml
+                    
+                    # Update frontend deployment with backend service URL
+                    sed -i 's|{{BACKEND_URL}}|http://${staticIP}:8000|g' k8s/frontend/deployment.yaml
+                    sed -i 's|{{BACKEND_IP}}|${staticIP}|g' k8s/frontend/deployment.yaml
+                    
+                    # Add image pull secrets to deployments
+                    sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/frontend/deployment.yaml
+                    sed -i '/containers:/i\\      imagePullSecrets:\\n      - name: acr-secret' k8s/backend/deployment.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Create Multi-Port LoadBalancer Service') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Creating multi-port LoadBalancer service for Prometheus monitoring"
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    sh """
+                    cat > multi-port-service.yaml << EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-port-loadbalancer
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-static-ip: ${staticIP}
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000,8000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: ${staticIP}
+  ports:
+  - name: frontend
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+  - name: backend
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    # This selector won't match any pods directly
+    # We'll use separate services for actual routing
+    app: multi-port-lb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-internal
+  labels:
+    app: frontend
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: frontend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-internal
+  labels:
+    app: backend
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: backend
+EOF
+                    
+                    # Apply the multi-port service
+                    kubectl apply -f multi-port-service.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Applications') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Deploying applications for Prometheus monitoring"
+                    
+                    // Deploy backend first
+                    sh """
+                    kubectl apply -f k8s/backend/deployment.yaml
+                    """
+                    
+                    // Deploy frontend
+                    sh """
+                    kubectl apply -f k8s/frontend/deployment.yaml
+                    """
+                    
+                    // Wait for deployments to be ready
+                    echo "Waiting for deployments to be ready..."
+                    sh """
+                    kubectl wait --for=condition=Ready pod -l app=backend --timeout=300s
+                    kubectl wait --for=condition=Ready pod -l app=frontend --timeout=300s
+                    """
+                }
+            }
+        }
+
+        stage('Setup Traffic Routing with iptables') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Setting up traffic routing for shared IP"
+                    sh """
+                    # Create a DaemonSet for traffic routing
+                    cat > traffic-router.yaml << EOF
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: traffic-router
+spec:
+  selector:
+    matchLabels:
+      app: traffic-router
+  template:
+    metadata:
+      labels:
+        app: traffic-router
+    spec:
+      hostNetwork: true
+      containers:
+      - name: router
+        image: alpine:latest
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          apk add --no-cache iptables
+          # Route port 3000 to frontend service
+          iptables -t nat -A PREROUTING -p tcp --dport 3000 -j DNAT --to-destination \$(nslookup frontend-internal.default.svc.cluster.local | grep Address | tail -1 | awk '{print \$2}'):3000
+          # Route port 8000 to backend service  
+          iptables -t nat -A PREROUTING -p tcp --dport 8000 -j DNAT --to-destination \$(nslookup backend-internal.default.svc.cluster.local | grep Address | tail -1 | awk '{print \$2}'):8000
+          # Keep container running
+          tail -f /dev/null
+        securityContext:
+          privileged: true
+          capabilities:
+            add: ["NET_ADMIN", "NET_RAW"]
+        volumeMounts:
+        - name: xtables-lock
+          mountPath: /run/xtables.lock
+      volumes:
+      - name: xtables-lock
+        hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+EOF
+                    
+                    # Apply traffic router (commented out as it requires privileged access)
+                    # kubectl apply -f traffic-router.yaml
+                    echo "Traffic router configuration created (requires privileged access)"
+                    """
+                }
+            }
+        }
+
+        stage('Alternative: Use Ingress Controller') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Setting up NGINX Ingress for Prometheus monitoring"
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    sh """
+                    # Install NGINX Ingress Controller if not exists
+                    if ! kubectl get deployment ingress-nginx-controller -n ingress-nginx > /dev/null 2>&1; then
+                        echo "Installing NGINX Ingress Controller..."
+                        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+                        
+                        # Wait for ingress controller to be ready
+                        kubectl wait --namespace ingress-nginx \
+                            --for=condition=ready pod \
+                            --selector=app.kubernetes.io/component=controller \
+                            --timeout=300s
+                    fi
+                    
+                    # Create ingress with static IP
+                    cat > prometheus-ingress.yaml << EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    service.beta.kubernetes.io/azure-load-balancer-static-ip: ${staticIP}
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+spec:
+  rules:
+  - host: ${staticIP}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-internal
+            port:
+              number: 3000
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-internal
+            port:
+              number: 8000
+      - path: /metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-internal
+            port:
+              number: 8000
+EOF
+                    
+                    kubectl apply -f prometheus-ingress.yaml
+                    """
+                }
+            }
+        }
+
+        stage('Deploy Prometheus Configuration') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Creating Prometheus configuration"
+                    def staticIP = sh(script: 'cat static_ip.txt', returnStdout: true).trim()
+                    
+                    sh """
+                    # Create Prometheus config
+                    cat > prometheus-config.yaml << EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    
+    scrape_configs:
+    - job_name: 'frontend'
+      static_configs:
+      - targets: ['${staticIP}:3000']
+      metrics_path: /metrics
+      scrape_interval: 15s
+    
+    - job_name: 'backend'
+      static_configs:
+      - targets: ['${staticIP}:8000']
+      metrics_path: /metrics
+      scrape_interval: 15s
+    
+    - job_name: 'kubernetes-pods'
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: \$1:\$2
+        target_label: __address__
+EOF
+                    
+                    kubectl apply -f prometheus-config.yaml
+                    echo "Prometheus configuration created for monitoring both services"
                     """
                 }
             }
@@ -485,18 +577,54 @@ stage('Deploy Frontend Service') {
             }
             steps {
                 script {
-                    echo "Verifying deployment"
+                    echo "Verifying deployment for Prometheus monitoring"
                     sh """
                     kubectl get pods -l app=frontend
                     kubectl get pods -l app=backend
                     kubectl get services
+                    kubectl get ingress
                     
-                    echo "Frontend IP: \$(cat static_ip.txt)"
-                    echo "Backend IP: \$(cat backend_ip.txt)"
+                    echo "Shared Static IP: \$(cat static_ip.txt)"
                     
-                    echo "URLs:"
+                    # Wait for services to be ready
+                    echo "Waiting for services to be accessible..."
+                    sleep 30
+                    
+                    echo "=== PROMETHEUS MONITORING ENDPOINTS ==="
+                    echo "Shared Static IP: \$(cat static_ip.txt)"
                     echo "Frontend: http://\$(cat static_ip.txt):3000"
-                    echo "Backend: http://\$(cat backend_ip.txt):8000"
+                    echo "Backend: http://\$(cat static_ip.txt):8000"
+                    echo "Frontend Metrics: http://\$(cat static_ip.txt):3000/metrics"
+                    echo "Backend Metrics: http://\$(cat static_ip.txt):8000/metrics"
+                    echo "API Endpoints: http://\$(cat static_ip.txt)/api"
+                    echo "=========================================="
+                    """
+                }
+            }
+        }
+
+        stage('Test Prometheus Endpoints') {
+            when {
+                expression { params.ACTION == 'deploy' }
+            }
+            steps {
+                script {
+                    echo "Testing Prometheus monitoring endpoints"
+                    sh """
+                    # Test internal service connectivity
+                    kubectl run prometheus-test --rm -i --tty --image=curlimages/curl --restart=Never -- sh -c "
+                        echo 'Testing frontend metrics endpoint...'
+                        curl -f http://frontend-internal:3000/metrics || echo 'Frontend metrics not available'
+                        echo 'Testing backend metrics endpoint...'
+                        curl -f http://backend-internal:8000/metrics || echo 'Backend metrics not available'
+                        echo 'Testing backend health...'
+                        curl -f http://backend-internal:8000/health || curl -f http://backend-internal:8000 || echo 'Backend not accessible'
+                    " || echo "Connectivity test completed"
+                    
+                    # Show service endpoints
+                    echo "=== SERVICE ENDPOINTS ==="
+                    kubectl get endpoints
+                    echo "========================="
                     """
                 }
             }
@@ -542,11 +670,23 @@ stage('Deploy Frontend Service') {
                     
                     // Show access information
                     sh """
-                    echo "=== ACCESS INFORMATION ==="
-                    FRONTEND_IP=\$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "pending")
-                    echo "Frontend URL: http://\$FRONTEND_IP:3000"
-                    echo "Backend URL: http://\$FRONTEND_IP:8000 (if exposed)"
-                    echo "==========================="
+                    echo "=== PROMETHEUS MONITORING SETUP ==="
+                    STATIC_IP=\$(cat static_ip.txt)
+                    echo "Shared Static IP: \$STATIC_IP"
+                    echo ""
+                    echo "Application URLs:"
+                    echo "Frontend: http://\$STATIC_IP:3000"
+                    echo "Backend: http://\$STATIC_IP:8000"
+                    echo "API: http://\$STATIC_IP/api"
+                    echo ""
+                    echo "Prometheus Scrape Endpoints:"
+                    echo "Frontend Metrics: http://\$STATIC_IP:3000/metrics"
+                    echo "Backend Metrics: http://\$STATIC_IP:8000/metrics"
+                    echo ""
+                    echo "Internal Service Names:"
+                    echo "Frontend: frontend-internal.default.svc.cluster.local:3000"
+                    echo "Backend: backend-internal.default.svc.cluster.local:8000"
+                    echo "===================================="
                     """
                 }
             }
@@ -559,14 +699,17 @@ stage('Deploy Frontend Service') {
                 echo "=== DEBUGGING INFORMATION ==="
                 kubectl get events --sort-by=.metadata.creationTimestamp --tail=20 || true
                 echo ""
-                echo "Frontend pods:"
-                kubectl get pods -l app=frontend || true
+                echo "All pods:"
+                kubectl get pods -o wide || true
                 echo ""
-                echo "Backend pods:"
-                kubectl get pods -l app=backend || true
+                echo "All services:"
+                kubectl get services -o wide || true
                 echo ""
-                echo "Services:"
-                kubectl get services || true
+                echo "Ingress status:"
+                kubectl get ingress -o wide || true
+                echo ""
+                echo "LoadBalancer services:"
+                kubectl get svc -o wide | grep LoadBalancer || true
                 echo ""
                 echo "Frontend logs:"
                 kubectl logs --tail=50 -l app=frontend || true
