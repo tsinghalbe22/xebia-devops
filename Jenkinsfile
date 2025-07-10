@@ -103,6 +103,7 @@ pipeline {
                 script {
                     sh """
                         cd ${TERRAFORM_DIR}
+                        pwd
                         terraform apply -auto-approve \\
                   -var="client_id=${TF_VAR_client_id}" \\
                   -var="client_secret=${TF_VAR_client_secret}" \\
