@@ -89,6 +89,8 @@ pipeline {
             steps {
                 script {
                     sh """
+                        ls --lah
+                    
                         cd ${TERRAFORM_DIR}
                         terraform plan -out=tfplan \
                             -var="client_id=${TF_VAR_client_id}" \
