@@ -124,15 +124,24 @@ pipeline {
             }
         }
         
-        // Deploy stage - TODO: Add deployment logic later
-        // stage('Deploy to Azure VM') {
-        //     steps {
-        //         script {
-        //             // Deployment logic will go here
-        //             echo "Deployment stage - to be implemented"
-        //         }
-        //     }
-        // }
+        stage('Run Prometheus') {
+    steps {
+        script {
+            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+
+            // Replace {{target}} and write to shared mount path
+            sh """
+                sed 's/{{target}}/${publicIP}/g' monitoring/prometheus.yml > /opt/monitoring-configs/prometheus.generated.yml
+
+                docker run -d --rm \\
+                    --name prometheus \\
+                    -p 9090:9090 \\
+                    -v /opt/monitoring-configs/prometheus.generated.yml:/etc/prometheus/prometheus.yml \\
+                    prom/prometheus
+            """
+        }
+    }
+}
     }
     
     post {
