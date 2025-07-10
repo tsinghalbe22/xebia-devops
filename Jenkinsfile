@@ -13,7 +13,7 @@ pipeline {
         TF_VAR_tenant_id = credentials('azure-tenant-id')
         TF_VAR_subscription_id = credentials('azure-subscription-id')
 
-        MONGO_URI = "mongodb+srv://tsinghalbe22:B9b8poQB8Pf6tbnc@cluster0.cwknfdr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"                  // Set this in Jenkins credentials
+        MONGO_URI = "mongodb+srv://tsinghalbe22:X7dFRYdqMdziFHCh@cluster0.cwknfdr.mongodb.net/?retryWrites=true\\&w=majority\\&appName=Cluster0"                  // Set this in Jenkins credentials
         EMAIL = "test"                     // Set this in Jenkins credentials
         EMAIL_PASSWORD = "test"   // Set this in Jenkins credentials
         JWT_SECRET = "test"            // Set this in Jenkins credentials
