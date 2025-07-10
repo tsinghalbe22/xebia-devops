@@ -143,7 +143,7 @@ pipeline {
                 sed -i 's|{{email-pass}}|${EMAIL_PASSWORD}|g' backend/.env
                 sed -i 's|{{jwt-key}}|${JWT_SECRET}|g' backend/.env
 
-                sed -i 's|{{ip}}|${publicIP}|g' frontend/frontend.env
+                sed -i 's|{{ip}}|${publicIP}|g' frontend/.env
             """
         }
     }
