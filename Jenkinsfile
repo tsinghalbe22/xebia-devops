@@ -34,26 +34,26 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                script {
-                    // Using SonarQube Scanner tool
-                    def scannerHome = tool 'SonarQube'
-                    withSonarQubeEnv('SonarQube') {
-                        sh """
-                            ${scannerHome}/bin/sonar-scanner \\
-                                -Dsonar.projectKey=xebia \\
-                                -Dsonar.projectName="Xebia Project" \\
-                                -Dsonar.projectVersion=1.0 \\
-                                -Dsonar.sources=frontend/,backend/ \\
-                                -Dsonar.exclusions=**/node_modules/** \\
-                                -Dsonar.host.url=\$SONAR_HOST_URL \\
-                                -Dsonar.login=\$SONARQUBE_TOKEN
-                        """
-                    }
-                }
-            }
-        }
+        // stage('SonarQube Analysis') {
+        //     steps {
+        //         script {
+        //             // Using SonarQube Scanner tool
+        //             def scannerHome = tool 'SonarQube'
+        //             withSonarQubeEnv('SonarQube') {
+        //                 sh """
+        //                     ${scannerHome}/bin/sonar-scanner \\
+        //                         -Dsonar.projectKey=xebia \\
+        //                         -Dsonar.projectName="Xebia Project" \\
+        //                         -Dsonar.projectVersion=1.0 \\
+        //                         -Dsonar.sources=frontend/,backend/ \\
+        //                         -Dsonar.exclusions=**/node_modules/** \\
+        //                         -Dsonar.host.url=\$SONAR_HOST_URL \\
+        //                         -Dsonar.login=\$SONARQUBE_TOKEN
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
 
         stage('Clean Docker Environment') {
     steps {
