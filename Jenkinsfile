@@ -15,7 +15,7 @@ pipeline {
 
         SONARQUBE_TOKEN = credentials('sonarqube-token')
 
-        MONGO_URI = credentials('mongo-db')
+        MONGO_URI = "mongodb+srv://tsinghalbe22:X7dFRYdqMdziFHCh@cluster0.cwknfdr.mongodb.net/?retryWrites=true\\&w=majority\\&appName=Cluster0"
         EMAIL = "test"                     // Set this in Jenkins credentials
         EMAIL_PASSWORD = "test"   // Set this in Jenkins credentials
         JWT_SECRET = "test"            // Set this in Jenkins credentials
