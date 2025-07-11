@@ -161,7 +161,7 @@ pipeline {
                 # Get the public IP for deployment
                 PUBLIC_IP=\$(terraform output -raw public_ip_2)
                 echo "Azure VM Public IP: \$PUBLIC_IP"
-                echo "\$PUBLIC_IP" > ${WORKSPACE}/public_ip.txt
+                echo "\$PUBLIC_IP" > /home/public_ip.txt
                     """
                 }
             }
