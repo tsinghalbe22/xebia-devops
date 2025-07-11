@@ -37,12 +37,13 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
-                    // Using SonarQube Scanner
+                    // Using SonarQube Scanner tool
+                    def scannerHome = tool 'SonarQube'
                     withSonarQubeEnv('SonarQube') {
                         sh """
-                            sonar-scanner \\
+                            ${scannerHome}/bin/sonar-scanner \\
                                 -Dsonar.projectKey=xebia \\
-                                -Dsonar.projectName="xebia" \\
+                                -Dsonar.projectName="Xebia Project" \\
                                 -Dsonar.projectVersion=1.0 \\
                                 -Dsonar.sources=frontend/,backend/ \\
                                 -Dsonar.exclusions=**/node_modules/** \\
