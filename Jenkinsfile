@@ -70,7 +70,34 @@ pipeline {
     }
 }
         
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    def tag = "${env.BUILD_NUMBER}"
+                    sh """
+                        docker build --no-cache -t ${FRONTEND_IMAGE}:${tag} ./frontend
+                        docker build --no-cache -t ${BACKEND_IMAGE}:${tag} ./backend
+                    """
+                }
+            }
+        }
         
+        stage('Push Docker Images') {
+            steps {
+                script {
+                    def tag = "${env.BUILD_NUMBER}"
+                    sh """
+                        echo "${DOCKERHUB_CREDENTIALS_PSW}" | docker login -u "${DOCKERHUB_CREDENTIALS_USR}" --password-stdin
+                        docker tag ${FRONTEND_IMAGE}:${tag} ${FRONTEND_IMAGE}:latest
+                        docker tag ${BACKEND_IMAGE}:${tag} ${BACKEND_IMAGE}:latest
+                        docker push ${FRONTEND_IMAGE}:${tag}
+                        docker push ${FRONTEND_IMAGE}:latest
+                        docker push ${BACKEND_IMAGE}:${tag}
+                        docker push ${BACKEND_IMAGE}:latest
+                    """
+                }
+            }
+        }
         
         stage('Setup Terraform') {
             steps {
@@ -163,7 +190,7 @@ pipeline {
         stage('Configure Docker Compose') {
     steps {
         script {
-            def tag = "142"
+            def tag = "${env.BUILD_NUMBER}"
             def frontendImage = "${env.FRONTEND_IMAGE}:${tag}"
             def backendImage = "${env.BACKEND_IMAGE}:${tag}"
 
