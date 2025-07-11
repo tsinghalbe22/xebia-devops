@@ -45,7 +45,7 @@ pipeline {
                                 -Dsonar.projectKey=xebia \\
                                 -Dsonar.projectName="Xebia Project" \\
                                 -Dsonar.projectVersion=1.0 \\
-                                -Dsonar.sources=frontend/,backend/ \\
+                                -Dsonar.sources=backend/models/ \\
                                 -Dsonar.exclusions=**/node_modules/** \\
                                 -Dsonar.host.url=\$SONAR_HOST_URL \\
                                 -Dsonar.login=\$SONARQUBE_TOKEN
