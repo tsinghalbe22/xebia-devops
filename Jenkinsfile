@@ -170,7 +170,7 @@ pipeline {
         stage('Inject Public IP into Environment Files') {
     steps {
         script {
-            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+            def publicIP = readFile("/home/public_ip.txt").trim()
 
             sh """
                 echo "🔧 Replacing placeholders in backend/.env and frontend/frontend.env"
@@ -207,7 +207,7 @@ pipeline {
         stage('Run Ansible Playbook') {
     steps {
         script {
-            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+            def publicIP = readFile("/home/ublic_ip.txt").trim()
 
             sh """
                 cd ./ansible/cluster
@@ -226,7 +226,7 @@ pipeline {
 stage('Reload Prometheus Config') {
     steps {
         script {
-            def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+            def publicIP = readFile("/home/public_ip.txt").trim()
             sh """
                 # Replace {{target}} with actual IP
                 sed 's/{{target}}/${publicIP}/g' monitoring/prometheus.yml > /opt/monitoring-configs/prometheus.yml
@@ -248,7 +248,7 @@ stage('Reload Prometheus Config') {
     post {
         success {
             script {
-                def publicIP = readFile("${WORKSPACE}/public_ip.txt").trim()
+                def publicIP = readFile("/home/public_ip.txt").trim()
                 echo """
                     ✅ Pipeline completed successfully!
                     
